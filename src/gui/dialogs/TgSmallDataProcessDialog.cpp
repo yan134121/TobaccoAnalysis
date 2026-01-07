@@ -2381,11 +2381,13 @@ void TgSmallDataProcessDialog::onItemChanged(QTreeWidgetItem *item, int column)
     if (isChecked) {
         // 加入本地选中集合并绘制曲线
         m_selectedSamples[clickedSampleId] = sampleFullName;
+        m_visibleSamples.insert(clickedSampleId);
         loadSampleCurve(clickedSampleId);
         updateSelectedSamplesList();
     } else {
         // 从本地选中集合移除并取消曲线
         m_selectedSamples.remove(clickedSampleId);
+        m_visibleSamples.remove(clickedSampleId);
         removeSampleCurve(clickedSampleId);
         updateSelectedSamplesList();
     }

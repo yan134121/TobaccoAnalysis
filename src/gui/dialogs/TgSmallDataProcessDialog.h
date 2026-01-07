@@ -186,10 +186,10 @@ private:
     QVBoxLayout* m_legendLayout = nullptr;
 
     ChartView* m_chartView1;
-    // ChartView* m_chartView2;
-    // ChartView* m_chartView3;
-    // ChartView* m_chartView4;
-    // ChartView* m_chartView5;
+    ChartView* m_chartView2;
+    ChartView* m_chartView3;
+    ChartView* m_chartView4;
+    ChartView* m_chartView5;
 
     
     // 右侧控制面板

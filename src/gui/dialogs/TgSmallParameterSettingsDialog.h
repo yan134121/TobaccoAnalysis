@@ -4,8 +4,10 @@
 #include <QDialog>
 #include <QVariantMap>
 #include <QCheckBox>
-#include <QSpinBox>
+#include <QComboBox>
 #include <QDebug>
+#include <QDoubleSpinBox>
+#include <QSpinBox>
 
 #include "core/common.h"
 
@@ -57,6 +59,7 @@ private slots:
 
 private:
     void setupUi();
+    QWidget* createBadPointTab();
     QWidget* createClippingTab();
     QWidget* createNormalizationTab();
     QWidget* createSmoothingTab();
@@ -70,26 +73,44 @@ private:
     QTabWidget* m_tabWidget;
     QDialogButtonBox* m_buttonBox;
     
-    // // 裁剪Tab
-    // QCheckBox* m_clipEnabledCheck;
-    // QDoubleSpinBox* m_clipMinSpinBox;
-    // QDoubleSpinBox* m_clipMaxSpinBox;
+    // 坏点修复Tab
+    QCheckBox* m_outlierEnabledCheck = nullptr;
+    QDoubleSpinBox* m_invalidTokenFraction = nullptr;
+    QSpinBox* m_outlierWindow = nullptr;
+    QDoubleSpinBox* m_outlierNSigma = nullptr;
+    QDoubleSpinBox* m_jumpDiffThreshold = nullptr;
+    QDoubleSpinBox* m_globalNSigma = nullptr;
+    QSpinBox* m_badPointsToShow = nullptr;
+    QComboBox* m_fitTypeCombo = nullptr;
+    QDoubleSpinBox* m_gammaSpin = nullptr;
+    QSpinBox* m_anchorWindow = nullptr;
+    QSpinBox* m_monoStart = nullptr;
+    QSpinBox* m_monoEnd = nullptr;
+    QDoubleSpinBox* m_edgeBlend = nullptr;
+    QDoubleSpinBox* m_epsScale = nullptr;
+    QDoubleSpinBox* m_slopeThreshold = nullptr;
+    QComboBox* m_interpMethodCombo = nullptr;
+
+    // 裁剪Tab
+    QCheckBox* m_clipEnabledCheck = nullptr;
+    QDoubleSpinBox* m_clipMinSpinBox = nullptr;
+    QDoubleSpinBox* m_clipMaxSpinBox = nullptr;
     
-    // // 归一化Tab
-    // QCheckBox* m_normEnabledCheck;
-    // QComboBox* m_normMethodCombo;
+    // 归一化Tab
+    QCheckBox* m_normEnabledCheck = nullptr;
+    QComboBox* m_normMethodCombo = nullptr;
     
-    // // 平滑Tab
-    // QCheckBox* m_smoothEnabledCheck;
-    // QComboBox* m_smoothMethodCombo;
-    // QSpinBox* m_smoothWindowSpinBox;
-    // QSpinBox* m_smoothPolyOrderSpinBox;
+    // 平滑Tab
+    QCheckBox* m_smoothEnabledCheck = nullptr;
+    QComboBox* m_smoothMethodCombo = nullptr;
+    QSpinBox* m_smoothWindowSpinBox = nullptr;
+    QSpinBox* m_smoothPolyOrderSpinBox = nullptr;
     
-    // // 微分Tab
-    // QCheckBox* m_derivativeEnabledCheck;
-    // QComboBox* m_derivMethodCombo;
-    // QSpinBox* m_derivWindowSpinBox;
-    // QSpinBox* m_derivPolyOrderSpinBox;
+    // 微分Tab
+    QCheckBox* m_derivativeEnabledCheck = nullptr;
+    QComboBox* m_derivMethodCombo = nullptr;
+    QSpinBox* m_derivWindowSpinBox = nullptr;
+    QSpinBox* m_derivPolyOrderSpinBox = nullptr;
 
     // 差异度计算tab
     QCheckBox* m_diffEnabledCheck = nullptr;

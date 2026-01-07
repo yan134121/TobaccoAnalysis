@@ -60,6 +60,10 @@ QVector<StageTemplate> tgBigTemplates = {
 // ----------------- 小热重模板 -----------------
 QVector<StageTemplate> tgSmallTemplates = {
     {StageName::RawData, AlgorithmType::None, {}, false, 1},
+    {StageName::Clip, AlgorithmType::Clip, {{"start",0},{"end",1000}}, false, 1},
+    {StageName::Normalize, AlgorithmType::Normalize, {}, false, 1},
+    {StageName::Smooth, AlgorithmType::Smooth_SG, {{"window",5},{"order",3}}, false, 1},
+    {StageName::Derivative, AlgorithmType::CentralDifference, {{"step",1}}, false, 1},
     {StageName::Difference, AlgorithmType::Difference, {}, false, 1},
     {StageName::Segmentation, AlgorithmType::Segmentation, {}, false, 1}
 };

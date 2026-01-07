@@ -467,7 +467,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     QString error;
     SampleDAO dao;
 
-    // --- 获取原始数据（微分数据） ---
+    // --- 1. 获取原始数据 ---
     QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, DataType::TG_SMALL, error);
     if (rawPoints.isEmpty()) {
         WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
@@ -483,7 +483,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     // 构造阶段数据
     StageData stage;
     stage.stageName = StageName::RawData;
-    stage.curve = QSharedPointer<Curve>::create(x, y, "原始微分数据0");
+    stage.curve = QSharedPointer<Curve>::create(x, y, "原始数据");
     stage.curve->setSampleId(sampleId);
     stage.algorithm = AlgorithmType::None;
     stage.isSegmented = false;
@@ -491,7 +491,145 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
 
     sampleData.stages.append(stage);
 
-    DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
+    QSharedPointer<Curve> currentCurve = stage.curve;
+
+    // --- 阶段1.5: 坏点修复 ---
+    if (params.outlierRemovalEnabled && m_registeredSteps.contains("bad_point_repair")) {
+        IProcessingStep* step = m_registeredSteps.value("bad_point_repair");
+        QVariantMap repairParams = step->defaultParameters();
+
+        repairParams["window"]         = params.outlierWindow;
+        repairParams["n_sigma"]        = params.outlierNSigma;
+        repairParams["jump_threshold"] = params.jumpDiffThreshold;
+        repairParams["global_n_sigma"] = params.globalNSigma;
+        repairParams["mono_start"]     = params.monoStart;
+        repairParams["mono_end"]       = params.monoEnd;
+        repairParams["anchor_win"]     = params.anchorWindow;
+        repairParams["fit_type"]       = params.fitType;
+        repairParams["eps_scale"]      = params.epsScale;
+        repairParams["interp_method"]  = params.interpMethod;
+
+        ProcessingResult res = step->process({currentCurve.data()}, repairParams, error);
+
+        if (!res.namedCurves.isEmpty() && res.namedCurves.contains("repaired")) {
+            stage.stageName = StageName::BadPointRepair;
+            stage.curve = QSharedPointer<Curve>(res.namedCurves.value("repaired").first());
+            stage.curve->setSampleId(sampleId);
+            stage.algorithm = AlgorithmType::BadPointRepair;
+            stage.isSegmented = false;
+            stage.numSegments = 1;
+
+            sampleData.stages.append(stage);
+            currentCurve = stage.curve;
+        }
+    }
+
+    // --- 阶段2: 裁剪 ---
+    if (params.clippingEnabled) {
+        if (m_registeredSteps.contains("clipping")) {
+            IProcessingStep* step = m_registeredSteps.value("clipping");
+            QVariantMap clipParams;
+            clipParams["min_x"] = params.clipMinX;
+            clipParams["max_x"] = params.clipMaxX;
+
+            ProcessingResult res = step->process({currentCurve.data()}, clipParams, error);
+
+            if (!res.namedCurves.isEmpty() && res.namedCurves.contains("clipped")) {
+                stage.stageName = StageName::Clip;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("clipped").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Clip;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+
+                sampleData.stages.append(stage);
+                currentCurve = stage.curve;
+            }
+        }
+    }
+
+    // --- 阶段3: 归一化 ---
+    if (params.normalizationEnabled) {
+        if (m_registeredSteps.contains("normalization")) {
+            IProcessingStep* step = m_registeredSteps.value("normalization");
+
+            QVariantMap normParams = step->defaultParameters();
+            if (params.normalizationMethod == "absmax") {
+                normParams["method"] = "absmax";
+            }
+            normParams["rangeMin"] = 0.0;
+            normParams["rangeMax"] = 100.0;
+
+            ProcessingResult res = step->process({currentCurve.data()}, normParams, error);
+
+            if (!res.namedCurves.isEmpty() && res.namedCurves.contains("normalized")) {
+                stage.stageName = StageName::Normalize;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("normalized").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Normalize;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+
+                sampleData.stages.append(stage);
+                currentCurve = stage.curve;
+            }
+        }
+    }
+
+    // --- 阶段4: 平滑 ---
+    if (params.smoothingEnabled) {
+        QString sm = QStringLiteral("loess");
+        QString methodId = (sm == "loess") ? QStringLiteral("smoothing_loess") : QStringLiteral("smoothing_sg");
+        if (m_registeredSteps.contains(methodId)) {
+            IProcessingStep* step = m_registeredSteps.value(methodId);
+            QVariantMap smoothParams;
+            smoothParams["fraction"] = params.loessSpan;
+            ProcessingResult res = step->process({currentCurve.data()}, smoothParams, error);
+            if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
+                stage.stageName = StageName::Smooth;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = (sm == "loess") ? AlgorithmType::Smooth_Loess : AlgorithmType::Smooth_SG;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+                sampleData.stages.append(stage);
+                currentCurve = stage.curve;
+            } else {
+                WARNING_LOG << "平滑阶段无结果：未返回 smoothed 曲线";
+            }
+        } else {
+            WARNING_LOG << "未注册的平滑算法:" << methodId;
+        }
+    }
+
+    // --- 阶段5: 微分 ---
+    if (params.derivativeEnabled) {
+        const QString& derivativeMethodId = params.derivativeMethod;
+
+        if (m_registeredSteps.contains(derivativeMethodId)) {
+            IProcessingStep* step = m_registeredSteps.value(derivativeMethodId);
+
+            QVariantMap derivParams;
+            if (derivativeMethodId == "derivative_sg") {
+                derivParams["window_size"] = params.derivSgWindowSize;
+                derivParams["poly_order"] = params.derivSgPolyOrder;
+                derivParams["derivative_order"] = 1;
+            }
+
+            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
+
+            if (res.namedCurves.contains("derivative1")) {
+                stage.stageName = StageName::Derivative;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("derivative1").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Derivative_SG;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+
+                sampleData.stages.append(stage);
+            }
+        }
+    }
 
     return sampleData;
 }
@@ -535,26 +673,17 @@ BatchGroupData DataProcessingService::runTgSmallPipelineForMultiple(
 
         // 添加到平行样本列表
         group.sampleDatas.append(singleSample);
-        // 如果这是组内第一个样本，就标记为最优
-        if (group.sampleDatas.size() == 1) {
-            group.sampleDatas[0].bestInGroup = true;
-        }
 
     }
 
-    // // 调试输出每个样本的数据点数
-    // for (auto it = batchResults.constBegin(); it != batchResults.constEnd(); ++it) {
-    //     int sampleId = it.key();
-    //     const SampleDataFlexible &data = it.value();
-
-    //     if (!data.stages.isEmpty() && data.stages.first().curve) {
-    //         int pointCount = data.stages.first().curve->pointCount();
-    //         DEBUG_LOG << QString("Sample %1: derivative exists, point count = %2")
-    //                      .arg(sampleId).arg(pointCount);
-    //     } else {
-    //         DEBUG_LOG << QString("Sample %1: derivative is null!").arg(sampleId);
-    //     }
-    // }
+    // 【关键】在完成批量组构建后，调用代表样选择服务，按 Derivative 阶段进行组内最优选择
+    if (m_appInitializer && m_appInitializer->getParallelSampleAnalysisService()) {
+        m_appInitializer->getParallelSampleAnalysisService()->selectRepresentativesInBatch(
+            batchResults, params, StageName::Derivative
+        );
+    } else {
+        WARNING_LOG << "DataProcessingService: 未能调用代表样选择服务 (AppInitializer 或服务为空)";
+    }
 
     return batchResults;
 }

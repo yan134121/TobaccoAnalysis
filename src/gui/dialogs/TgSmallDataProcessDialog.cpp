@@ -96,9 +96,11 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializ
                 // 2) 添加到本界面选中集合，供绘制使用（统一名称格式）
                 QString name = buildSampleDisplayName(sampleId);
                 m_selectedSamples.insert(sampleId, name);
+                m_visibleSamples.insert(sampleId);
             }
             m_suppressItemChanged = false;
             drawSelectedSampleCurves();
+            updateSelectedSamplesList();
         }
     }
 

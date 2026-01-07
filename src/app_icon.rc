@@ -1,0 +1,3 @@
+// app_icon.rc
+#include "windows.h"
+IDI_ICON1 ICON "src/resources/app.ico"

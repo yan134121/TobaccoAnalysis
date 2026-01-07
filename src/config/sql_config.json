@@ -1,0 +1,501 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "SQL语句配置文件，用于解耦代码中的SQL语句",
+    "created_date": "2024-01-01",
+    "last_modified": "2024-01-01"
+  },
+  "database_schema": {
+    "create_tables": ""
+  },
+  "dao_operations": {
+    "ProcessTgBigDataDAO": {
+      "insert": {
+        "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_name)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "插入处理后的大热重数据记录"
+      },
+      "insert_batch": {
+        "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_name)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "批量插入处理后的大热重数据记录"
+      },
+      "select_by_sample_id": {
+        "sql": "SELECT * FROM process_tg_big_data WHERE sample_id = :sample_id ORDER BY id, serial_no",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询处理后的大热重数据"
+      },
+      "delete_by_sample_id": {
+        "sql": "DELETE FROM process_tg_big_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID删除处理后的大热重数据"
+      }
+    },
+    "TgSmallDataDAO": {
+      "insert": {
+        "sql": "INSERT INTO tg_small_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "插入小热重数据记录"
+      },
+      "insert_batch": {
+        "sql": "INSERT INTO tg_small_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "批量插入小热重数据记录"
+      },
+      "select_by_sample_id": {
+        "sql": "SELECT * FROM tg_small_data WHERE sample_id = :sample_id ORDER BY id, temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重数据"
+      },
+      "delete_by_sample_id": {
+        "sql": "DELETE FROM tg_small_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID删除小热重数据"
+      }
+    },
+    "TgBigDataDAO": {
+      "insert": {
+        "sql": "INSERT INTO tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "插入大热重数据记录"
+      },
+      "insert_batch": {
+        "sql": "INSERT INTO tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "批量插入大热重数据记录"
+      },
+      "select_by_sample_id": {
+        "sql": "SELECT * FROM tg_big_data WHERE sample_id = :sample_id ORDER BY id, serial_no",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询大热重数据"
+      },
+      "delete_by_sample_id": {
+        "sql": "DELETE FROM tg_big_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID删除大热重数据"
+      }
+    },
+    "ChromatographyDataDAO": {
+      "insert": {
+        "sql": "INSERT INTO chromatography_data (sample_id, retention_time, response_value, source_filename) VALUES (:sample_id, :retention_time, :response_value, :source_filename)",
+        "parameters": ["sample_id", "retention_time", "response_value", "source_filename"],
+        "description": "插入色谱数据记录"
+      },
+      "insert_batch": {
+        "sql": "INSERT INTO chromatography_data (sample_id, retention_time, response_value, source_filename) VALUES (?, ?, ?, ?)",
+        "parameters": ["sample_id", "retention_time", "response_value", "source_filename"],
+        "description": "批量插入色谱数据记录"
+      },
+      "select_by_sample_id": {
+        "sql": "SELECT * FROM chromatography_data WHERE sample_id = :sample_id ORDER BY id, retention_time",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询色谱数据"
+      },
+      "delete_by_sample_id": {
+        "sql": "DELETE FROM chromatography_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID删除色谱数据"
+      }
+    },
+    "TobaccoBatchDAO": {
+      "insert": {
+        "sql": "INSERT INTO tobacco_batch (model_id, batch_code, produce_date, batch_type, description) VALUES (:model_id, :batch_code, :produce_date, :batch_type, :description)",
+        "parameters": ["model_id", "batch_code", "produce_date", "batch_type", "description"],
+        "description": "插入批次记录"
+      },
+      "update": {
+        "sql": "UPDATE tobacco_batch SET model_id = :model_id, batch_code = :batch_code, produce_date = :produce_date, description = :description WHERE id = :id",
+        "parameters": ["model_id", "batch_code", "produce_date", "description", "id"],
+        "description": "更新批次记录"
+      },
+      "delete": {
+        "sql": "DELETE FROM tobacco_batch WHERE id = :id",
+        "parameters": ["id"],
+        "description": "删除批次记录"
+      },
+      "select_by_id": {
+        "sql": "SELECT * FROM tobacco_batch WHERE id = :id",
+        "parameters": ["id"],
+        "description": "根据ID查询批次"
+      },
+      "select_all": {
+        "sql": "SELECT * FROM tobacco_batch ORDER BY batch_code",
+        "parameters": [],
+        "description": "查询所有批次"
+      },
+      "select_by_model_id": {
+        "sql": "SELECT * FROM tobacco_batch WHERE model_id = :model_id ORDER BY batch_code",
+        "parameters": ["model_id"],
+        "description": "根据型号ID查询批次"
+      },
+      "check_batch_exists": {
+        "sql": "SELECT id FROM tobacco_batch WHERE model_id = :model_id AND batch_code = :batch_code AND batch_type = :batch_type",
+        "parameters": ["model_id", "batch_code", "batch_type"],
+        "description": "检查批次编码是否存在（包含批次类型）"
+      }
+
+    },
+    "DictionaryOptionDAO": {
+      "insert": {
+        "sql": "INSERT INTO dictionary_option (category, value, description) VALUES (:category, :value, :description)",
+        "parameters": ["category", "value", "description"],
+        "description": "插入字典选项记录"
+      },
+      "update": {
+        "sql": "UPDATE dictionary_option SET category = :category, value = :value, description = :description WHERE id = :id",
+        "parameters": ["category", "value", "description", "id"],
+        "description": "更新字典选项记录"
+      },
+      "delete": {
+        "sql": "DELETE FROM dictionary_option WHERE id = :id",
+        "parameters": ["id"],
+        "description": "删除字典选项记录"
+      },
+      "select_by_id": {
+        "sql": "SELECT * FROM dictionary_option WHERE id = :id",
+        "parameters": ["id"],
+        "description": "根据ID查询字典选项"
+      },
+      "select_all": {
+        "sql": "SELECT * FROM dictionary_option ORDER BY category, value",
+        "parameters": [],
+        "description": "查询所有字典选项"
+      },
+      "select_by_category": {
+        "sql": "SELECT * FROM dictionary_option WHERE category = :category ORDER BY value",
+        "parameters": ["category"],
+        "description": "根据类别查询字典选项"
+      },
+      "select_values_by_category": {
+        "sql": "SELECT value FROM dictionary_option WHERE category = :category ORDER BY value",
+        "parameters": ["category"],
+        "description": "根据类别查询字典选项值"
+      },
+      "check_exists": {
+        "sql": "SELECT COUNT(*) FROM dictionary_option WHERE category = :category AND value = :value",
+        "parameters": ["category", "value"],
+        "description": "检查字典选项是否存在"
+      }
+    },
+    "SingleTobaccoSampleDAO": {
+      "select_model_id": {
+        "sql": "SELECT id FROM tobacco_model WHERE model_code = :model_code",
+        "parameters": ["model_code"],
+        "description": "根据型号代码查询型号ID"
+      },
+      "insert": {
+        "sql": "INSERT INTO single_tobacco_sample (batch_id, project_name, short_code, parallel_no, sample_name, note, year, origin, part, grade, type, collect_date, detect_date, data_json) VALUES (:batch_id, :project_name, :short_code, :parallel_no, :sample_name, :note, :year, :origin, :part, :grade, :type, :collect_date, :detect_date, :data_json)",
+        "parameters": ["batch_id", "project_name", "short_code", "parallel_no", "sample_name", "note", "year", "origin", "part", "grade", "type", "collect_date", "detect_date", "data_json"],
+        "description": "插入单料烟样品记录"
+      },
+      "update": {
+        "sql": "UPDATE single_tobacco_sample SET batch_id = :batch_id, project_name = :project_name, short_code = :short_code, parallel_no = :parallel_no, sample_name = :sample_name, note = :note, year = :year, origin = :origin, part = :part, grade = :grade, type = :type, collect_date = :collect_date, detect_date = :detect_date, data_json = :data_json WHERE id = :id",
+        "parameters": ["batch_id", "project_name", "short_code", "parallel_no", "sample_name", "note", "year", "origin", "part", "grade", "type", "collect_date", "detect_date", "data_json", "id"],
+        "description": "更新单料烟样品记录"
+      },
+      "delete": {
+        "sql": "DELETE FROM single_tobacco_sample WHERE id = :id",
+        "parameters": ["id"],
+        "description": "删除单料烟样品记录"
+      },
+      "select_by_id": {
+        "sql": "SELECT * FROM single_tobacco_sample WHERE id = :id",
+        "parameters": ["id"],
+        "description": "根据ID查询单料烟样品"
+      },
+      "select_all": {
+        "sql": "SELECT * FROM single_tobacco_sample",
+        "parameters": [],
+        "description": "查询所有单料烟样品"
+      },
+      "queryBase": {
+        "sql": "SELECT * FROM single_tobacco_sample",
+        "parameters": [],
+        "description": "按条件查询单料烟样品"
+      },
+      "query_by_project_batch_short_parallel": {
+        "sql": "SELECT s.* FROM single_tobacco_sample s JOIN tobacco_batch b ON s.batch_id = b.id WHERE s.project_name = :project_name AND b.batch_code = :batch_code AND s.short_code = :short_code AND s.parallel_no = :parallel_no",
+        "parameters": ["project_name", "batch_code", "short_code", "parallel_no"],
+        "description": "根据项目名、批次编码、短码和平行样编号查询样本"
+      },
+      "getSampleIdentifierById": {
+        "sql": "SELECT s.project_name, b.batch_code, s.short_code, s.parallel_no FROM single_tobacco_sample AS s LEFT JOIN tobacco_batch AS b ON s.batch_id = b.id WHERE s.id = :id",
+        "parameters": ["id"],
+        "description": "根据样品ID获取样品标识符"
+
+      },
+      "get_sampleIdentifiers_by_project_batch": {
+          "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no FROM single_tobacco_sample AS s LEFT JOIN tobacco_batch AS b ON s.batch_id = b.id LEFT JOIN tobacco_model AS m ON b.model_id = m.id WHERE m.model_name = :projectName AND b.batch_code = :batchCode AND b.batch_type = :batchType",
+          "parameters": ["projectName", "batchCode", "batchType"],
+          "description": "根据项目名、批次号和批次类型获取该批次下所有样本标识符"
+      }
+
+    },
+
+    "SampleDAO": {
+      "select_all_samples": {
+        "sql": "SELECT s.id, s.batch_id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name, s.origin, s.grade FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询所有样品基本信息"
+      },
+      "select_data_by_sample_id_big": {
+        "sql": "SELECT serial_no, weight FROM tg_big_data WHERE sample_id = :sample_id ORDER BY serial_no",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询大热重数据"
+      },
+      "select_data_by_sample_id_small": {
+        "sql": "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重数据"
+      },
+      "select_data_by_sample_id_chrom": {
+        "sql": "SELECT retention_time, response_value FROM chromatography_data WHERE sample_id = :sample_id ORDER BY retention_time",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询色谱数据"
+      },
+      "select_data_by_sample_id_process_big": {
+        "sql": "SELECT serial_no, weight FROM process_tg_big_data WHERE sample_id = :sample_id ORDER BY serial_no",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询处理后大热重数据"
+      },
+      "select_samples_with_data": {
+        "sql": "SELECT DISTINCT s.id AS sample_id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name, s.origin, s.grade FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_big_data tbd WHERE tbd.sample_id = s.id) OR EXISTS (SELECT 1 FROM tg_small_data tsd WHERE tsd.sample_id = s.id) OR EXISTS (SELECT 1 FROM chromatography_data cd WHERE cd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询有数据的样品"
+      },
+      "select_samples_by_data_type": {
+        "sql": "SELECT DISTINCT s.id, s.batch_id, s.project_name, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s INNER JOIN {data_table} d ON s.id = d.sample_id ORDER BY s.batch_id, s.short_code, s.parallel_no",
+        "parameters": ["data_table"],
+        "description": "根据数据类型查询有数据的样品"
+      },
+      "select_sample_by_id": {
+        "sql": "SELECT id, batch_id, project_name, short_code, parallel_no, sample_name, origin, grade, year, part, type, collect_date, detect_date FROM single_tobacco_sample WHERE id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据ID查询样品信息"
+      },
+      "fetch_parallel_samples_info": {
+        "sql": "SELECT id, batch_id, project_name, short_code, parallel_no, sample_name, origin, grade, year, part, type, collect_date, detect_date FROM single_tobacco_sample WHERE batch_id = :batch_id AND short_code = :short_code ORDER BY parallel_no",
+        "parameters": ["batch_id", "short_code"],
+        "description": "获取平行样品信息"
+      },
+      "fetch_chart_data_big": {
+        "sql": "SELECT temperature, tg_value, dtg_value FROM tg_big_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询大热重图表数据"
+      },
+      "fetch_chart_data_small": {
+        "sql": "SELECT temperature, tg_value, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重图表数据"
+      },
+      "fetch_chart_data_chrom": {
+        "sql": "SELECT retention_time, response_value FROM chromatography_data WHERE sample_id = :sample_id ORDER BY retention_time",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询色谱图表数据"
+      },
+      "get_samples_by_data_type_big": {
+        "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_big_data tbd WHERE tbd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询有大热重数据的样品"
+      },
+      "get_samples_by_data_type_small": {
+        "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_small_data tsd WHERE tsd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询有小热重数据的样品"
+      },
+      "get_samples_by_data_type_chrom": {
+        "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM chromatography_data cd WHERE cd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询有色谱数据的样品"
+      }
+      ,
+      "get_samples_by_data_type_process_big": {
+        "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM process_tg_big_data ptbd WHERE ptbd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询有工序大热重数据的样品"
+      },
+      "count_data_points_big": {
+        "sql": "SELECT COUNT(*) FROM tg_big_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "统计指定样本的大热重数据点数"
+      },
+      "count_data_points_small": {
+        "sql": "SELECT COUNT(*) FROM tg_small_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "统计指定样本的小热重数据点数"
+      },
+      "count_data_points_chrom": {
+        "sql": "SELECT COUNT(*) FROM chromatography_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "统计指定样本的色谱数据点数"
+      },
+      "count_data_points_process_big": {
+        "sql": "SELECT COUNT(*) FROM process_tg_big_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "统计指定样本的工序大热重数据点数"
+      }
+    },
+    "NavigatorDAO": {
+      "select_tobacco_models": {
+        "sql": "SELECT id, model_name, model_code FROM tobacco_model ORDER BY model_code",
+        "parameters": [],
+        "description": "查询所有烟草型号"
+      },
+      "select_batches": {
+        "sql": "SELECT id, batch_code FROM tobacco_batch WHERE model_id = :model_id AND batch_type = :batch_type ORDER BY batch_code",
+        "parameters": ["model_id", "batch_type"],
+        "description": "根据模型ID和批次类型查询批次"
+      },
+      "select_batches_by_model": {
+        "sql": "SELECT * FROM tobacco_batch WHERE model_id = :model_id ORDER BY id",
+        "parameters": ["model_id"],
+        "description": "根据模型ID查询批次"
+      },
+      "select_batch_codes_by_project": {
+        "sql": "SELECT DISTINCT s.batch_code FROM tg_big_data d JOIN single_tobacco_sample s ON d.sample_id = s.id WHERE s.project_name = :project_name ORDER BY s.batch_code",
+        "parameters": ["project_name"],
+        "description": "根据项目名查询存在数据的批次代码"
+      },
+      "select_batch_codes": {
+        "sql": "SELECT DISTINCT batch_code FROM tobacco_batch WHERE model_id = :model_id ORDER BY batch_code",
+        "parameters": ["model_id"],
+        "description": "根据模型ID查询批次代码"
+      },
+      "select_samples_by_project_and_batch": {
+        "sql": "SELECT DISTINCT s.id as sample_id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name, s.origin, s.grade FROM tg_big_data d JOIN single_tobacco_sample s ON d.sample_id = s.id LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE s.project_name = :project_name AND b.batch_code = :batch_code ORDER BY s.short_code, s.parallel_no",
+        "parameters": ["project_name", "batch_code"],
+        "description": "根据项目名与批次号查询样本（存在大热重数据）"
+      },
+      "select_samples_by_batch": {
+        "sql": "SELECT * FROM single_tobacco_sample WHERE batch_id = :batch_id ORDER BY id",
+        "parameters": ["batch_id"],
+        "description": "根据批次ID查询样品"
+      },
+      "select_short_codes_by_batch": {
+        "sql": "SELECT DISTINCT short_code FROM single_tobacco_sample WHERE batch_id = :batch_id ORDER BY short_code",
+        "parameters": ["batch_id"],
+        "description": "根据批次ID查询短代码（新版键名）"
+      },
+      "select_short_codes": {
+        "sql": "SELECT DISTINCT s.short_code FROM single_tobacco_sample s WHERE s.batch_id = :batch_id ORDER BY s.short_code",
+        "parameters": ["batch_id"],
+        "description": "根据批次ID查询短代码"
+      },
+      "select_parallel_samples_by_batch": {
+        "sql": "SELECT id, parallel_no FROM single_tobacco_sample WHERE batch_id = :batch_id AND short_code = :short_code ORDER BY parallel_no",
+        "parameters": ["batch_id", "short_code"],
+        "description": "根据批次ID与短代码查询平行样（新版键名）"
+      },
+      "select_parallel_samples": {
+        "sql": "SELECT s.id AS sample_id, s.parallel_no, s.sample_name FROM single_tobacco_sample s WHERE s.batch_id = :batch_id AND s.short_code = :short_code ORDER BY s.parallel_no",
+        "parameters": ["batch_id", "short_code"],
+        "description": "根据批次ID和短代码查询平行样品"
+      },
+      "get_sample_detail_info": {
+        "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no FROM single_tobacco_sample s JOIN tobacco_batch b ON s.batch_id = b.id WHERE s.id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样本ID获取详细标识信息"
+      },
+      "exists_tg_big_by_batch_and_short_code": {
+        "sql": "SELECT COUNT(*) as count FROM tg_big_data d JOIN single_tobacco_sample s ON d.sample_id = s.id WHERE s.batch_id = :batch_id AND s.short_code = :short_code",
+        "parameters": ["batch_id", "short_code"],
+        "description": "判断指定批次/短码是否存在大热重数据"
+      },
+      "exists_tg_small_by_batch_and_short_code": {
+        "sql": "SELECT COUNT(*) as count FROM tg_small_data d JOIN single_tobacco_sample s ON d.sample_id = s.id WHERE s.batch_id = :batch_id AND s.short_code = :short_code",
+        "parameters": ["batch_id", "short_code"],
+        "description": "判断指定批次/短码是否存在小热重数据"
+      },
+      "exists_chrom_by_batch_and_short_code": {
+        "sql": "SELECT COUNT(*) as count FROM chromatography_data d JOIN single_tobacco_sample s ON d.sample_id = s.id WHERE s.batch_id = :batch_id AND s.short_code = :short_code",
+        "parameters": ["batch_id", "short_code"],
+        "description": "判断指定批次/短码是否存在色谱数据"
+      },
+      "search_samples_by_name": {
+        "sql": "SELECT s.id AS sample_id, s.parallel_no AS parallel_no, s.short_code AS short_code, s.sample_name AS sample_name, s.project_name AS project_name, b.id AS batch_id, b.batch_code AS batch_code, b.batch_type AS batch_type, m.id AS model_id, m.model_name AS model_name, m.model_code AS model_code FROM single_tobacco_sample s JOIN tobacco_batch b ON s.batch_id = b.id JOIN tobacco_model m ON b.model_id = m.id WHERE s.sample_name LIKE :kw OR s.short_code LIKE :kw OR s.project_name LIKE :kw ORDER BY m.model_code, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": ["kw"],
+        "description": "按样本名称/短码/项目名模糊搜索样本并返回路径信息"
+      },
+      "select_batch_and_model_ids_by_project_name_and_type": {
+        "sql": "SELECT DISTINCT b.id, b.model_id FROM single_tobacco_sample s JOIN tobacco_batch b ON s.batch_id = b.id WHERE s.project_name = :project_name AND b.batch_type = :batch_type",
+        "parameters": ["project_name", "batch_type"],
+        "description": "根据项目名与批次类型反查批次与型号ID"
+      },
+      "select_model_id_by_model_code": {
+        "sql": "SELECT id FROM tobacco_model WHERE model_code = :project_name",
+        "parameters": ["project_name"],
+        "description": "根据型号代码查询型号ID（绑定参数为project_name）"
+      },
+      "select_batch_ids_by_model_id_and_type": {
+        "sql": "SELECT id FROM tobacco_batch WHERE model_id = :model_id AND batch_type = :batch_type",
+        "parameters": ["model_id", "batch_type"],
+        "description": "根据型号ID与批次类型查询批次ID"
+      },
+      "select_sample_ids_by_batch_id": {
+        "sql": "SELECT id FROM single_tobacco_sample WHERE batch_id = :batch_id",
+        "parameters": ["batch_id"],
+        "description": "根据批次ID查询样本ID"
+      },
+      "delete_process_tg_big_by_sample_id": {
+        "sql": "DELETE FROM process_tg_big_data WHERE sample_id = :sid",
+        "parameters": ["sid"],
+        "description": "按样本ID删除工序大热重数据"
+      },
+      "delete_tg_big_by_sample_id": {
+        "sql": "DELETE FROM tg_big_data WHERE sample_id = :sid",
+        "parameters": ["sid"],
+        "description": "按样本ID删除大热重数据"
+      },
+      "delete_tg_small_by_sample_id": {
+        "sql": "DELETE FROM tg_small_data WHERE sample_id = :sid",
+        "parameters": ["sid"],
+        "description": "按样本ID删除小热重数据"
+      },
+      "delete_chrom_by_sample_id": {
+        "sql": "DELETE FROM chromatography_data WHERE sample_id = :sid",
+        "parameters": ["sid"],
+        "description": "按样本ID删除色谱数据"
+      },
+      "delete_sample_by_id": {
+        "sql": "DELETE FROM single_tobacco_sample WHERE id = :sid",
+        "parameters": ["sid"],
+        "description": "按ID删除样本"
+      },
+      "delete_batch_by_id": {
+        "sql": "DELETE FROM tobacco_batch WHERE id = :bid",
+        "parameters": ["bid"],
+        "description": "按ID删除批次"
+      },
+      "delete_model_by_id": {
+        "sql": "DELETE FROM tobacco_model WHERE id = :mid",
+        "parameters": ["mid"],
+        "description": "按ID删除型号"
+      },
+      "select_batch_id_by_model_id_and_code_and_type": {
+        "sql": "SELECT id FROM tobacco_batch WHERE model_id = :model_id AND batch_code = :batch_code AND batch_type = :batch_type",
+        "parameters": ["model_id", "batch_code", "batch_type"],
+        "description": "根据型号ID、批次号与类型查询批次ID"
+      },
+      "get_sample_curve_data_big": {
+        "sql": "SELECT temperature, tg_value, dtg_value FROM tg_big_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询大热重曲线数据"
+      },
+      "get_sample_curve_data_small": {
+        "sql": "SELECT temperature, tg_value, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重曲线数据"
+      },
+      "get_sample_curve_data_chrom": {
+        "sql": "SELECT retention_time, response_value FROM chromatography_data WHERE sample_id = :sample_id ORDER BY retention_time",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询色谱曲线数据"
+      },
+      "check_sample_exists": {
+        "sql": "SELECT COUNT(*) FROM single_tobacco_sample WHERE id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样本ID检查样本是否存在"
+      }
+    }
+  }
+}

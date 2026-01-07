@@ -1,0 +1,11 @@
+﻿{
+  "database": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "username": "root",
+    "password": "123456",
+    "database": "tobacco_leaf_db",
+    "auto_create": true,
+    "init_script": "config/database/init_database.sql"
+  }
+}

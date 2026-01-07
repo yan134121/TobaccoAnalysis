@@ -1,0 +1,13 @@
+﻿{
+    "database": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "dbName": "tobacco_data",
+        "user": "root",
+        "password": "000000"
+    },
+    "sql": {
+    "create_tables_script": "sql/create_tables.sql",
+    "initData": "sql/init_data.sql"
+  }
+}

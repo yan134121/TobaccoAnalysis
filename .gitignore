@@ -52,3 +52,29 @@ compile_commands.json
 *creator.user*
 
 *_qmlcache.qrc
+
+
+# --- 编译输出目录 (Shadow Builds) ---
+# 匹配类似 build-ProjectName-Desktop_Qt_5_15_2_MinGW_64_bit-Debug 的文件夹
+build*/
+
+# --- Visual Studio 产生的文件 (包括 .vs 目录) ---
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.db
+*.opendb
+*.VC.db
+
+
+# --- Qt Creator 相关 (核心忽略) ---
+.qtcreator/
+*.pro.user
+*.pro.user.*
+*.cmake.user
+*.cmake.user.*
+*.qbs.user
+*.qbs.user.*

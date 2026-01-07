@@ -1,0 +1,277 @@
+#ifndef TGBIGDATAPROCESSDIALOG_H
+#define TGBIGDATAPROCESSDIALOG_H
+
+#include <QWidget>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QTreeWidget>
+#include <QTabWidget>
+#include <QListWidget>
+#include <QGroupBox>
+#include <QLabel>
+#include <QPushButton>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QCheckBox>
+#include <QTextEdit>
+#include <QProgressBar>
+#include <QMap>
+#include <QSet>
+#include <QHash>
+#include <QVector>
+#include <QPointF>
+#include <QToolBar>
+#include <QAction>
+#include <QtCharts/QLineSeries>
+#include <QtCharts/QChart>
+#include "data_access/SampleDAO.h"
+#include "data_access/NavigatorDAO.h"
+#include "gui/views/ChartView.h"
+#include "TgBigParameterSettingsDialog.h"
+#include "src/services/DataProcessingService.h"
+#include "core/common.h"
+#include "core/singletons/SampleSelectionManager.h" // 统一选中管理器（订阅按类型变化）
+#include "AppInitializer.h"
+
+QT_CHARTS_USE_NAMESPACE
+
+// 前置声明
+class DataNavigator;
+class TgBigParameterSettingsDialog;
+
+namespace Ui {
+class TgBigDataProcessDialog;
+}
+
+class TgBigDataProcessDialog : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit TgBigDataProcessDialog(QWidget *parent = nullptr, AppInitializer* appInitializer = nullptr, DataNavigator *mainNavigator = nullptr);
+    ~TgBigDataProcessDialog();
+    
+    // 选择指定的样本并显示其曲线
+    void selectSample(int sampleId, const QString& sampleName);
+    
+    // 添加和移除样本曲线
+    void addSampleCurve(int sampleId, const QString& sampleName);
+    void removeSampleCurve(int sampleId);
+    
+    // 获取所有选中的样本ID和名称
+    QMap<int, QString> getSelectedSamples() const;
+    
+    // 统计选中的样本数量
+    int countSelectedSamples() const;
+    
+    // 显示选中样本的统计信息
+    void showSelectedSamplesStatistics();
+    
+    // 选择批次中的所有样本
+    void onSelectAllSamplesInBatch(const QString& projectName, const QString& batchCode);
+
+    void recalculateAndUpdatePlot();
+
+    void updatePlot();
+    void updateLegendPanel();
+
+signals:
+    // 当样本被选中时发出信号，通知主窗口设置导航树选择框状态
+    void sampleSelected(int sampleId, bool selected);
+
+    // void requestNewDifferenceWorkbench(const QVariantMap& referenceCurve,
+    //                                    const QList<QVariantMap>& allDerivativeCurves);
+    // void requestNewDifferenceWorkbench(QSharedPointer<Curve> referenceCurve,
+    //                                    const QList<QSharedPointer<Curve>>& allDerivativeCurves);
+    void requestNewTgBigDifferenceWorkbench(int referenceSampleId,
+                                       const BatchGroupData& allProcessedData,
+                                       const ProcessingParameters& params);
+
+
+private slots:
+    void onCancelButtonClicked();
+    void onParameterChanged();
+    void onLeftItemClicked(QTreeWidgetItem *item, int column);
+    void onSampleItemClicked(QTreeWidgetItem *item, int column);
+    void onItemChanged(QTreeWidgetItem *item, int column);
+    void onParameterSettingsClicked();
+
+    void onParametersApplied(const ProcessingParameters &newParams);
+
+    // 负责接收后台计算结果的槽函数
+    void onCalculationFinished();
+
+     void onProcessAndPlotButtonClicked();
+    void onStartComparison();
+    void onClearCurvesClicked(); // 清除曲线按钮槽函数
+    void onDrawAllSelectedCurvesClicked(); // 绘制所有选中曲线
+    void onUnselectAllSamplesClicked();    // 取消所有选中样本
+    // void onClearCurvesClicked(); // 清除曲线按钮槽函数
+
+    // 显示/隐藏左侧标签页（导航 + 选中样本）
+    void onToggleNavigatorClicked();
+
+    // 选中样本列表的勾选框变化
+    void onSelectedSamplesListItemChanged(QListWidgetItem* item);
+
+    // 主导航样本选中状态变化的槽函数（带数据类型），用于动态同步大热重导航树
+    void onMainNavigatorSampleSelectionChanged(int sampleId, const QString& sampleName, const QString& dataType, bool selected);
+private:
+    void setupUI();
+    void setupConnections();
+    void setupLeftNavigator();
+    void setupMiddlePanel();
+    void setupRightPanel();
+    void loadNavigatorData();
+    void loadNavigatorDataFromDatabase();
+    void loadNavigatorDataFromMainNavigator();
+    void loadSampleCurve(int sampleId);
+
+    // 在左侧导航树中查找样本节点（通过样本ID），若不存在返回nullptr
+    QTreeWidgetItem* findSampleItemById(int sampleId) const;
+    
+    // 绘制所有选中的样本曲线
+    void drawSelectedSampleCurves();
+    
+    // 参数重置
+    void resetParameters();
+    void updateRightPanel(QTreeWidgetItem *item);
+    
+    // 参数设置对话框
+    TgBigParameterSettingsDialog* m_parameterDialog;
+    
+    // 存储样本曲线的映射表 <样本ID, 曲线对象>
+    QMap<int, QLineSeries*> m_sampleCurves;
+
+    // 主布局组件
+    QVBoxLayout* m_mainLayout;
+    QSplitter* m_mainSplitter;
+    
+    // 左侧导航树面板
+    QWidget* m_leftPanel;
+    QVBoxLayout* m_leftLayout;
+    QTabWidget* m_leftTabWidget;     // 左侧标签页容器（样本导航 / 选中样本）
+    QTreeWidget* m_leftNavigator;    // 样本导航树
+    QListWidget* m_selectedSamplesList; // 选中样本名称列表
+    QLabel* m_selectedStatsLabel;    // 显示“已选中/绘图样本数”的统计标签
+    QMap<int, QListWidgetItem*> m_selectedItemMap; // 列表项复用，按样本ID索引
+    
+    // 中间绘图面板
+    QWidget* m_middlePanel;
+    // QVBoxLayout* m_middleLayout;
+    QGridLayout* m_middleLayout;
+    // ChartView* m_chartView;
+    QChart* m_chart;
+
+    QWidget* m_legendPanel = nullptr;
+    QVBoxLayout* m_legendLayout = nullptr;
+
+    ChartView* m_chartView1;
+    ChartView* m_chartView2;
+    ChartView* m_chartView3;
+    ChartView* m_chartView4;
+    ChartView* m_chartView5;
+
+    
+    // 右侧控制面板
+    QWidget* m_rightPanel;
+    QVBoxLayout* m_rightLayout;
+    // QGroupBox* m_methodGroup;
+    // QComboBox* m_methodCombo;
+    // QGroupBox* m_paramGroup;
+    QLabel* m_tempRangeLabel;
+    QDoubleSpinBox* m_tempMinSpin;
+    QDoubleSpinBox* m_tempMaxSpin;
+    QLabel* m_smoothingLabel;
+    QSpinBox* m_smoothingSpin;
+    QCheckBox* m_baselineCorrectionCheck;
+    QCheckBox* m_peakDetectionCheck;
+    // QTextEdit* m_resultText;
+    // QProgressBar* m_progressBar;
+    
+    // 底部按钮
+    QHBoxLayout* m_buttonLayout;
+    // QPushButton* m_processButton;
+    // QPushButton* m_resetButton;
+    // QPushButton* m_cancelButton;
+    QPushButton* m_parameterButton;
+    QPushButton* m_processAndPlotButton;
+    QPushButton* m_startComparisonButton;
+    // 显示/隐藏导航按钮
+    QPushButton* m_toggleNavigatorButton;
+    QPushButton* m_clearCurvesButton; // 清除曲线按钮
+    QPushButton* m_drawAllButton; // 绘制所有选中曲线按钮
+    QPushButton* m_unselectAllButton; // 取消所有选中样本按钮
+    
+    // 数据访问
+    SampleDAO m_sampleDao;
+    NavigatorDAO m_navigatorDao;
+    QList<QVariantMap> m_bigTgSamples;
+    
+    // 存储选中的大热重样本，键为样本ID，值为样本名称
+    QMap<int, QString> m_selectedSamples;
+    // 当前需要显示曲线的样本ID集合（列表勾选控制）
+    QSet<int> m_visibleSamples;
+    // 批次选择绘图去抖标记，避免重复绘制
+    bool m_drawScheduled = false;
+
+    // 曲线数据与图例名称缓存，降低重复数据库访问与字符串拼接
+    QHash<int, QVector<QPointF>> m_curveCache;   // <样本ID, 曲线点缓存>
+    QMap<int, QString> m_legendNameCache;        // <样本ID, 图例名称缓存>
+    
+    // 主界面导航树引用
+    DataNavigator *m_mainNavigator;
+
+    // 抑制 itemChanged 递归触发标志，用于程序化修改复选框状态时防止循环
+    bool m_suppressItemChanged = false;
+    
+    // 图表工具栏和操作
+    QToolBar* m_chartToolBar;
+    QAction* m_zoomInAction;
+    QAction* m_zoomOutAction;
+    QAction* m_zoomResetAction;
+
+    QTabWidget* tabWidget;
+    QWidget* tab1Widget;
+QVBoxLayout* tab1Layout;
+// QWidget* tab2Widget;
+// QWidget* tab3Widget;
+
+ProcessingParameters m_currentParams; 
+DataProcessingService* m_processingService = nullptr; // 指向后台服务
+
+// int m_sampleId;                         // 当前正在分析的样本ID
+// MultiStageData m_stageDataCache;
+
+// 【升级】缓存也变成了一个 Map
+    BatchGroupData m_stageDataCache;
+
+    AppInitializer* m_appInitializer = nullptr; // <-- 新增成员变量
+
+    TgBigParameterSettingsDialog *m_paramDialog = nullptr;
+    QMap<int, SampleIdentifier> sampleIdMap;
+
+    // 根据样本ID构造统一显示名称 short_code(parallel_no)-timestamp
+    QString buildSampleDisplayName(int sampleId);
+
+    // 刷新左侧“选中样本”列表显示
+    void updateSelectedSamplesList();
+    // 刷新顶部统计信息（已选中样本总数 / 绘图样本数）
+    void updateSelectedStatsInfo();
+    // 调度一次异步重绘与图例刷新，避免频繁调用造成阻塞
+    void scheduleRedraw();
+    // 确保列表中存在对应样本的条目
+    void ensureSelectedListItem(int sampleId, const QString& displayName);
+    // 从列表与索引移除条目
+    void removeSelectedListItem(int sampleId);
+    // 如无缓存则异步预取曲线数据并缓存
+    void prefetchCurveIfNeeded(int sampleId);
+
+
+
+
+};
+
+#endif // TGBIGDATAPROCESSDIALOG_H

@@ -55,6 +55,10 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializ
     // TgSmallDataProcessDialog* tab1 = new TgSmallDataProcessDialog(this, m_mainNavigator);
     // tabWidget->addTab(tab1, tr("小热重数据处理"));
 
+    // 小热重默认温度区间在 400-800 左右，避免裁剪默认 60-400 导致处理阶段为空
+    m_currentParams.clipMinX = 400.0;
+    m_currentParams.clipMaxX = 800.0;
+
     // 提前创建参数设置窗口
     m_paramDialog = new TgSmallParameterSettingsDialog(m_currentParams, this);
 

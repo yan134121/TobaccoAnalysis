@@ -360,6 +360,7 @@ QList<TgSmallData> SingleTobaccoSampleService::parseTgSmallDataFromRawData(int s
 {
     QList<TgSmallData> list;
     errorMessage.clear();
+    int serialCounter = 1;
     for (const QVariantList& rowData : fullSheetRawData) {
         // 关键逻辑：判断当前行数据是否属于当前平行样的数据块
         int firstCoreColIndex = currentReplicateMapping.tgSmallTemperatureColIndex - 1;
@@ -403,7 +404,7 @@ QList<TgSmallData> SingleTobaccoSampleService::parseTgSmallDataFromRawData(int s
 
         TgSmallData sd;
         sd.setSampleId(sampleId);
-        // sd.setSerialNo((replicateNoColIdx >= 0 && replicateNoColIdx < rowData.size()) ? rowData.value(replicateNoColIdx).toInt() : currentReplicateNo);
+        sd.setSerialNo(serialCounter++);
         sd.setTemperature(tempValue.toDouble());
         DEBUG_LOG << "tempValue.toDouble()" << tempValue.toDouble();
         sd.setTgValue(tgValue.toDouble());

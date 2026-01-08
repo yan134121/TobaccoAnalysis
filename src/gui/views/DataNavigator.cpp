@@ -1679,3 +1679,34 @@ void DataNavigator::setSampleCheckStateForType(int sampleId, const QString& data
     // 未找到则直接结束，不更改树的展开状态。
     m_inProgrammaticUpdate = false;
 }
+
+void DataNavigator::clearSampleChecksForType(const QString& dataType)
+{
+    m_inProgrammaticUpdate = true;
+    for (int i = 0; i < m_dataSourceRoot->childCount(); ++i) {
+        QTreeWidgetItem* projectItem = m_dataSourceRoot->child(i);
+        for (int j = 0; j < projectItem->childCount(); ++j) {
+            QTreeWidgetItem* batchItem = projectItem->child(j);
+            for (int k = 0; k < batchItem->childCount(); ++k) {
+                QTreeWidgetItem* shortCodeItem = batchItem->child(k);
+                for (int l = 0; l < shortCodeItem->childCount(); ++l) {
+                    QTreeWidgetItem* dataTypeItem = shortCodeItem->child(l);
+                    QVariant dtVar = dataTypeItem->data(0, Qt::UserRole);
+                    if (!dtVar.canConvert<NavigatorNodeInfo>()) continue;
+                    NavigatorNodeInfo dtInfo = dtVar.value<NavigatorNodeInfo>();
+                    if (dtInfo.type != NavigatorNodeInfo::DataType || dtInfo.dataType != dataType) {
+                        continue;
+                    }
+                    disconnect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+                    for (int m = 0; m < dataTypeItem->childCount(); ++m) {
+                        QTreeWidgetItem* sampleItem = dataTypeItem->child(m);
+                        if (!sampleItem) continue;
+                        sampleItem->setCheckState(0, Qt::Unchecked);
+                    }
+                    connect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+                }
+            }
+        }
+    }
+    m_inProgrammaticUpdate = false;
+}

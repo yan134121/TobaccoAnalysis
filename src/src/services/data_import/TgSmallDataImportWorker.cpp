@@ -382,10 +382,14 @@ void TgSmallDataImportWorker::run()
             
             // 修改: 使用shared_ptr而不是原始指针
             std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, 1); // 第一列
+            std::shared_ptr<QXlsx::Cell> cellTgValue = xlsx.cellAt(row, 2); // 第二列
             std::shared_ptr<QXlsx::Cell> cellWeight = xlsx.cellAt(row, 3); // 第三列
             
             // 检查单元格是否为空
-            if (!cellTemp || !cellWeight || cellTemp->value().isNull() || cellWeight->value().isNull()) {
+            if (!cellTemp || !cellTgValue || !cellWeight
+                || cellTemp->value().isNull()
+                || cellTgValue->value().isNull()
+                || cellWeight->value().isNull()) {
                 emptyRowCount++;
                 row++;
                 continue;
@@ -395,17 +399,19 @@ void TgSmallDataImportWorker::run()
             emptyRowCount = 0;
             
             bool tempOk = false;
+            bool tgValueOk = false;
             bool DtgValueOK = false;
             double temperature = cellTemp->value().toDouble(&tempOk);
+            double tgValue = cellTgValue->value().toDouble(&tgValueOk);
             double DtgValue = cellWeight->value().toDouble(&DtgValueOK);
             
-            if (tempOk && DtgValueOK) {
+            if (tempOk && tgValueOk && DtgValueOK) {
                 TgSmallData data;
                 data.setSampleId(sampleId);
                 data.setSerialNo(row - 1); // 调整序列号，从0开始
                 data.setTemperature(temperature);
                 data.setWeight(0.0);
-                data.setTgValue(0.0); // 设置热重值为重量
+                data.setTgValue(tgValue);
                 data.setDtgValue(DtgValue); // 默认微分值为0
                 data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
                 

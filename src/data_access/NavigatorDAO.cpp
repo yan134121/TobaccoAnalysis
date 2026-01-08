@@ -273,6 +273,33 @@ QVector<QPointF> NavigatorDAO::getSampleCurveData(int sampleId, const QString &d
     return data;
 }
 
+QVector<QPointF> NavigatorDAO::getSmallRawWeightCurveData(int sampleId, QString &error)
+{
+    QVector<QPointF> data;
+    QSqlQuery query(DatabaseManager::instance().database());
+    QString queryString = "SELECT serial_no, weight FROM tg_small_data WHERE sample_id = :sample_id ORDER BY serial_no";
+
+    query.prepare(queryString);
+    query.bindValue(":sample_id", sampleId);
+
+    if (!query.exec()) {
+        error = query.lastError().text();
+        DEBUG_LOG << "NavigatorDAO::getSmallRawWeightCurveData - SQL Error:" << error;
+        return data;
+    }
+
+    while (query.next()) {
+        bool okX, okY;
+        double x = query.value(0).toDouble(&okX);
+        double y = query.value(1).toDouble(&okY);
+        if (okX && okY) {
+            data.append(QPointF(x, y));
+        }
+    }
+
+    return data;
+}
+
 QVariantMap NavigatorDAO::getSampleDetailInfo(int sampleId, QString& error)
 {
     QVariantMap result;

@@ -833,8 +833,34 @@ void TgBigDataProcessDialog::onUnselectAllSamplesClicked()
     for (int sampleId : ids) {
         SampleSelectionManager::instance()->setSelectedWithType(sampleId, type, false, QStringLiteral("Dialog-UnselectAll"));
     }
+    if (m_mainNavigator) {
+        m_mainNavigator->clearSampleChecksForType(type);
+    }
+    if (m_leftNavigator) {
+        m_suppressItemChanged = true;
+        for (int i = 0; i < m_leftNavigator->topLevelItemCount(); ++i) {
+            QTreeWidgetItem* projectItem = m_leftNavigator->topLevelItem(i);
+            if (!projectItem) continue;
+            for (int j = 0; j < projectItem->childCount(); ++j) {
+                QTreeWidgetItem* batchItem = projectItem->child(j);
+                if (!batchItem) continue;
+                for (int k = 0; k < batchItem->childCount(); ++k) {
+                    QTreeWidgetItem* sampleItem = batchItem->child(k);
+                    if (!sampleItem) continue;
+                    sampleItem->setCheckState(0, Qt::Unchecked);
+                }
+            }
+        }
+        m_suppressItemChanged = false;
+    }
     m_selectedSamples.clear();
     m_visibleSamples.clear();
+    if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    updateLegendPanel();
     updateSelectedSamplesList();
 }
 

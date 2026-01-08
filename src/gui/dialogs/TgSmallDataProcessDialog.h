@@ -190,6 +190,7 @@ private:
     ChartView* m_chartView3;
     ChartView* m_chartView4;
     ChartView* m_chartView5;
+    ChartView* m_chartView6;
 
     
     // 右侧控制面板

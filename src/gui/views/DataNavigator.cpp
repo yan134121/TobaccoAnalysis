@@ -1679,3 +1679,31 @@ void DataNavigator::setSampleCheckStateForType(int sampleId, const QString& data
     // 未找到则直接结束，不更改树的展开状态。
     m_inProgrammaticUpdate = false;
 }
+
+void DataNavigator::clearSampleChecksForType(const QString& dataType)
+{
+    m_inProgrammaticUpdate = true;
+    disconnect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+    QList<QTreeWidgetItem*> stack;
+    for (int i = 0; i < topLevelItemCount(); ++i) {
+        if (QTreeWidgetItem* item = topLevelItem(i)) {
+            stack.append(item);
+        }
+    }
+    while (!stack.isEmpty()) {
+        QTreeWidgetItem* item = stack.takeLast();
+        if (!item) continue;
+        QVariant data = item->data(0, Qt::UserRole);
+        if (data.canConvert<NavigatorNodeInfo>()) {
+            NavigatorNodeInfo info = data.value<NavigatorNodeInfo>();
+            if (info.type == NavigatorNodeInfo::Sample && info.dataType == dataType) {
+                item->setCheckState(0, Qt::Unchecked);
+            }
+        }
+        for (int i = 0; i < item->childCount(); ++i) {
+            stack.append(item->child(i));
+        }
+    }
+    connect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+    m_inProgrammaticUpdate = false;
+}

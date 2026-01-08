@@ -244,7 +244,7 @@
         "description": "根据样品ID查询大热重数据"
       },
       "select_data_by_sample_id_small": {
-        "sql": "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "sql": "SELECT temperature, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature",
         "parameters": ["sample_id"],
         "description": "根据样品ID查询小热重数据"
       },

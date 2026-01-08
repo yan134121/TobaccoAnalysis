@@ -540,7 +540,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本曲线数据出错:" << error;
                         }
-                        rawTgPoints = m_navigatorDao.getSampleCurveData(sampleId, "小热重", error);
+                        rawTgPoints = m_navigatorDao.getSmallRawWeightCurveData(sampleId, error);
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本原始数据出错:" << error;
                         }

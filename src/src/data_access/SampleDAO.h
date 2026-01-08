@@ -22,6 +22,8 @@ public:
 
     // 根据样本ID(sample_id)和数据类型，获取图表数据
     QVector<QPointF> fetchChartDataForSample(int sampleId, const DataType dataType, QString& error);
+    // 获取小热重原始曲线（serial_no, tg_value）
+    QVector<QPointF> fetchSmallRawTgData(int sampleId, QString& error);
 
     QList<QVariantMap> getSamplesByDataType(const QString &dataType);
     

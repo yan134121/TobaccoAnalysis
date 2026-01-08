@@ -55,6 +55,10 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializ
     // TgSmallDataProcessDialog* tab1 = new TgSmallDataProcessDialog(this, m_mainNavigator);
     // tabWidget->addTab(tab1, tr("小热重数据处理"));
 
+    // 小热重默认温度区间在 400-800 左右，避免裁剪默认 60-400 导致处理阶段为空
+    m_currentParams.clipMinX = 400.0;
+    m_currentParams.clipMaxX = 800.0;
+
     // 提前创建参数设置窗口
     m_paramDialog = new TgSmallParameterSettingsDialog(m_currentParams, this);
 
@@ -473,7 +477,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
         DEBUG_LOG << "绘制所有可见样本，数量:" << m_visibleSamples.size();
 
         // 检查图表视图是否初始化
-        if (!m_chartView1) {
+        if (!m_chartView1 || !m_chartView2) {
             DEBUG_LOG << "图表视图未初始化，无法绘制曲线";
             return;
         }
@@ -481,6 +485,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
         // 清空图表区域
         try {
             m_chartView1->clearGraphs();
+            m_chartView2->clearGraphs();
             DEBUG_LOG << "已清空图表区域";
         } catch (const std::exception& e) {
             DEBUG_LOG << "清空图表区域异常:" << e.what();
@@ -499,6 +504,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
         
         try {
             m_chartView1->setPlotTitle("原始DTG数据");
+            m_chartView2->setPlotTitle("原始数据");
         } catch (const std::exception& e) {
             DEBUG_LOG << "设置图表标题异常:" << e.what();
         } catch (...) {
@@ -526,12 +532,17 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                 try {
                     QString error;
                     QVector<QPointF> points;
+                    QVector<QPointF> rawWeightPoints;
                     QVariantMap sampleInfo;
                     
                     try {
                         points = m_navigatorDao.getSampleCurveData(sampleId, "小热重", error);
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本曲线数据出错:" << error;
+                        }
+                        rawWeightPoints = m_navigatorDao.getSmallRawWeightCurveData(sampleId, error);
+                        if (!error.isEmpty()) {
+                            DEBUG_LOG << "获取样本原始数据出错:" << error;
                         }
                     } catch (const std::exception& e) {
                         DEBUG_LOG << "获取样本曲线数据异常:" << e.what();
@@ -563,23 +574,23 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         legendName = QString("样本-%1").arg(sampleId);
                     }
 
+                    QColor curveColor;
+                    try {
+                        curveColor = ColorUtils::setCurveColor(colorIndex);
+                    } catch (const std::exception& e) {
+                        DEBUG_LOG << "设置曲线颜色异常:" << e.what();
+                        curveColor = Qt::blue;
+                    } catch (...) {
+                        DEBUG_LOG << "设置曲线颜色未知异常";
+                        curveColor = Qt::blue;
+                    }
+
                     if (!points.isEmpty()) {
                         try {
                             QVector<double> xData, yData;
                             for (const QPointF& point : points) {
                                 xData.append(point.x());
                                 yData.append(point.y());
-                            }
-
-                            QColor curveColor;
-                            try {
-                                curveColor = ColorUtils::setCurveColor(colorIndex);
-                            } catch (const std::exception& e) {
-                                DEBUG_LOG << "设置曲线颜色异常:" << e.what();
-                                curveColor = Qt::blue;
-                            } catch (...) {
-                                DEBUG_LOG << "设置曲线颜色未知异常";
-                                curveColor = Qt::blue;
                             }
 
                             // 添加图表
@@ -593,8 +604,6 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                             } catch (...) {
                                 DEBUG_LOG << "添加图表未知异常";
                             }
-
-                            colorIndex++;
                         } catch (const std::exception& e) {
                             DEBUG_LOG << "处理样本数据点异常:" << e.what();
                         } catch (...) {
@@ -602,6 +611,23 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         }
                     } else {
                         DEBUG_LOG << "未找到样本曲线数据，样本ID:" << sampleId << ", 错误:" << error;
+                    }
+
+                    if (!rawWeightPoints.isEmpty()) {
+                        QVector<double> xRawData, yRawData;
+                        for (const QPointF& point : rawWeightPoints) {
+                            xRawData.append(point.x());
+                            yRawData.append(point.y());
+                        }
+                        if (m_chartView2) {
+                            m_chartView2->addGraph(xRawData, yRawData, legendName, curveColor, sampleId);
+                        }
+                    } else {
+                        DEBUG_LOG << "未找到样本原始数据，样本ID:" << sampleId << ", 错误:" << error;
+                    }
+
+                    if (!points.isEmpty() || !rawWeightPoints.isEmpty()) {
+                        colorIndex++;
                     }
                 } catch (const std::exception& e) {
                     DEBUG_LOG << "加载样本曲线异常，样本ID:" << sampleId << ", 错误:" << e.what();
@@ -621,6 +647,10 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
             if (m_chartView1) {
                 m_chartView1->replot();
                 DEBUG_LOG << "已重绘图表";
+            }
+            if (m_chartView2) {
+                m_chartView2->setLegendVisible(false);
+                m_chartView2->replot();
             }
         } catch (const std::exception& e) {
             DEBUG_LOG << "重绘图表异常:" << e.what();
@@ -767,11 +797,11 @@ void TgSmallDataProcessDialog::setupUI()
     
     
     
+    // 新增清除曲线按钮
+    m_clearCurvesButton = new QPushButton(tr("清除曲线"), tab1Widget);
     // 新增绘制所有选中曲线与取消所有选中样本按钮
     m_drawAllButton = new QPushButton(tr("绘制所有选中曲线"), tab1Widget);
     m_unselectAllButton = new QPushButton(tr("取消所有选中样本"), tab1Widget);
-    // 新增清除曲线按钮
-    m_clearCurvesButton = new QPushButton(tr("清除曲线"), tab1Widget);
     
     
 
@@ -783,9 +813,9 @@ void TgSmallDataProcessDialog::setupUI()
     m_buttonLayout->addWidget(m_parameterButton);
     m_buttonLayout->addWidget(m_processAndPlotButton);
     m_buttonLayout->addWidget(m_startComparisonButton);
+    m_buttonLayout->addWidget(m_clearCurvesButton);
     m_buttonLayout->addWidget(m_drawAllButton);
     m_buttonLayout->addWidget(m_unselectAllButton);
-    m_buttonLayout->addWidget(m_clearCurvesButton);
 
     // m_mainLayout->addLayout(m_buttonLayout);
 
@@ -871,7 +901,8 @@ void TgSmallDataProcessDialog::setupMiddlePanel()
     m_chartView3 = new ChartView();
     m_chartView4 = new ChartView();
     m_chartView5 = new ChartView();
-    if (!m_chartView1 || !m_chartView2 || !m_chartView3 || !m_chartView4 || !m_chartView5) {
+    m_chartView6 = new ChartView();
+    if (!m_chartView1 || !m_chartView2 || !m_chartView3 || !m_chartView4 || !m_chartView5 || !m_chartView6) {
         DEBUG_LOG << "TgSmallDataProcessDialog::setupMiddlePanel--VIEW - ERROR: Failed to create ChartView!";
     } else {
         DEBUG_LOG << "TgSmallDataProcessDialog::setupMiddlePanel--VIEW - ChartView created successfully";
@@ -882,7 +913,8 @@ void TgSmallDataProcessDialog::setupMiddlePanel()
     m_middleLayout->addWidget(m_chartView2, 0, 1);
     m_middleLayout->addWidget(m_chartView3, 1, 0);
     m_middleLayout->addWidget(m_chartView4, 1, 1);
-    m_middleLayout->addWidget(m_chartView5, 2, 0); // 显示
+    m_middleLayout->addWidget(m_chartView5, 2, 0);
+    m_middleLayout->addWidget(m_chartView6, 2, 1);
 
     // m_legendPanel = new QWidget();
     // m_legendLayout = new QVBoxLayout(m_legendPanel);
@@ -1076,9 +1108,37 @@ void TgSmallDataProcessDialog::onUnselectAllSamplesClicked()
     for (int sampleId : ids) {
         SampleSelectionManager::instance()->setSelectedWithType(sampleId, type, false, QStringLiteral("Dialog-UnselectAll"));
     }
+    if (m_mainNavigator) {
+        m_mainNavigator->clearSampleChecksForType(type);
+    }
+
+    if (m_leftNavigator) {
+        m_suppressItemChanged = true;
+        for (int i = 0; i < m_leftNavigator->topLevelItemCount(); ++i) {
+            QTreeWidgetItem* projectItem = m_leftNavigator->topLevelItem(i);
+            if (!projectItem) continue;
+            for (int j = 0; j < projectItem->childCount(); ++j) {
+                QTreeWidgetItem* batchItem = projectItem->child(j);
+                if (!batchItem) continue;
+                for (int k = 0; k < batchItem->childCount(); ++k) {
+                    QTreeWidgetItem* sampleItem = batchItem->child(k);
+                    if (!sampleItem) continue;
+                    sampleItem->setCheckState(0, Qt::Unchecked);
+                }
+            }
+        }
+        m_suppressItemChanged = false;
+    }
 
     m_selectedSamples.clear();
     m_visibleSamples.clear();
+    if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    if (m_chartView6) m_chartView6->clearGraphs();
+    updateLegendPanel();
     updateSelectedSamplesList();
 }
 
@@ -1086,6 +1146,11 @@ void TgSmallDataProcessDialog::onClearCurvesClicked()
 {
     // 仅清除绘图区域的曲线；不改变“被选中样本”，只将其设为不可见
     if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    if (m_chartView6) m_chartView6->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();
@@ -2200,19 +2265,19 @@ void TgSmallDataProcessDialog::updatePlot()
         DEBUG_LOG << "开始更新图表";
 
         if (m_stageDataCache.isEmpty()) {
-            if (m_chartView2) m_chartView2->clearGraphs();
             if (m_chartView3) m_chartView3->clearGraphs();
             if (m_chartView4) m_chartView4->clearGraphs();
             if (m_chartView5) m_chartView5->clearGraphs();
+            if (m_chartView6) m_chartView6->clearGraphs();
             return;
         }
 
         int colorIndex = 0;
 
-        if (m_chartView2) {
-            m_chartView2->clearGraphs();
-            m_chartView2->setLabels(tr(""), tr("重量"));
-            m_chartView2->setPlotTitle("裁剪数据");
+        if (m_chartView3) {
+            m_chartView3->clearGraphs();
+            m_chartView3->setLabels(tr(""), tr("重量"));
+            m_chartView3->setPlotTitle("裁剪数据");
         }
 
         for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
@@ -2221,32 +2286,6 @@ void TgSmallDataProcessDialog::updatePlot()
             for (const auto &sample : group.sampleDatas) {
                 for (const auto &stage : sample.stages) {
                     if (stage.stageName == StageName::Clip && stage.curve) {
-                        QSharedPointer<Curve> curve = stage.curve;
-                        curve->setColor(ColorUtils::setCurveColor(colorIndex++));
-                        if (m_chartView2) m_chartView2->addCurve(curve);
-                    }
-                }
-            }
-        }
-
-        if (m_chartView2) {
-            m_chartView2->setLegendVisible(false);
-            m_chartView2->replot();
-        }
-
-        colorIndex = 0;
-        if (m_chartView3) {
-            m_chartView3->clearGraphs();
-            m_chartView3->setLabels(tr(""), tr("重量"));
-            m_chartView3->setPlotTitle("归一化数据");
-        }
-
-        for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
-            const SampleGroup &group = groupIt.value();
-
-            for (const auto &sample : group.sampleDatas) {
-                for (const auto &stage : sample.stages) {
-                    if (stage.stageName == StageName::Normalize && stage.curve) {
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView3) m_chartView3->addCurve(curve);
@@ -2264,7 +2303,7 @@ void TgSmallDataProcessDialog::updatePlot()
         if (m_chartView4) {
             m_chartView4->clearGraphs();
             m_chartView4->setLabels(tr(""), tr("重量"));
-            m_chartView4->setPlotTitle("平滑数据");
+            m_chartView4->setPlotTitle("归一化数据");
         }
 
         for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
@@ -2272,7 +2311,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
             for (const auto &sample : group.sampleDatas) {
                 for (const auto &stage : sample.stages) {
-                    if (stage.stageName == StageName::Smooth && stage.curve) {
+                    if (stage.stageName == StageName::Normalize && stage.curve) {
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView4) m_chartView4->addCurve(curve);
@@ -2290,7 +2329,7 @@ void TgSmallDataProcessDialog::updatePlot()
         if (m_chartView5) {
             m_chartView5->clearGraphs();
             m_chartView5->setLabels(tr(""), tr("重量"));
-            m_chartView5->setPlotTitle("微分数据");
+            m_chartView5->setPlotTitle("平滑数据");
         }
 
         for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
@@ -2298,7 +2337,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
             for (const auto &sample : group.sampleDatas) {
                 for (const auto &stage : sample.stages) {
-                    if (stage.stageName == StageName::Derivative && stage.curve) {
+                    if (stage.stageName == StageName::Smooth && stage.curve) {
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView5) m_chartView5->addCurve(curve);
@@ -2310,6 +2349,32 @@ void TgSmallDataProcessDialog::updatePlot()
         if (m_chartView5) {
             m_chartView5->setLegendVisible(false);
             m_chartView5->replot();
+        }
+
+        colorIndex = 0;
+        if (m_chartView6) {
+            m_chartView6->clearGraphs();
+            m_chartView6->setLabels(tr(""), tr("重量"));
+            m_chartView6->setPlotTitle("微分数据");
+        }
+
+        for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+            const SampleGroup &group = groupIt.value();
+
+            for (const auto &sample : group.sampleDatas) {
+                for (const auto &stage : sample.stages) {
+                    if (stage.stageName == StageName::Derivative && stage.curve) {
+                        QSharedPointer<Curve> curve = stage.curve;
+                        curve->setColor(ColorUtils::setCurveColor(colorIndex++));
+                        if (m_chartView6) m_chartView6->addCurve(curve);
+                    }
+                }
+            }
+        }
+
+        if (m_chartView6) {
+            m_chartView6->setLegendVisible(false);
+            m_chartView6->replot();
         }
 
         DEBUG_LOG << "图表更新完成";

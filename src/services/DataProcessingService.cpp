@@ -468,7 +468,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     SampleDAO dao;
 
     // --- 1. 获取原始数据 ---
-    QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, DataType::TG_SMALL, error);
+    QVector<QPointF> rawPoints = dao.fetchSmallRawWeightData(sampleId, error);
     if (rawPoints.isEmpty()) {
         WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
         return sampleData;

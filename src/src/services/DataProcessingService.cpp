@@ -467,8 +467,8 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     QString error;
     SampleDAO dao;
 
-    // --- 获取原始数据（微分数据） ---
-    QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, DataType::TG_SMALL, error);
+    // --- 获取原始数据 ---
+    QVector<QPointF> rawPoints = dao.fetchSmallRawTgData(sampleId, error);
     if (rawPoints.isEmpty()) {
         WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
         return sampleData;
@@ -483,7 +483,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     // 构造阶段数据
     StageData stage;
     stage.stageName = StageName::RawData;
-    stage.curve = QSharedPointer<Curve>::create(x, y, "原始微分数据0");
+    stage.curve = QSharedPointer<Curve>::create(x, y, "原始数据");
     stage.curve->setSampleId(sampleId);
     stage.algorithm = AlgorithmType::None;
     stage.isSegmented = false;
@@ -492,6 +492,115 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     sampleData.stages.append(stage);
 
     DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
+
+    // --- 流水线处理 ---
+    QSharedPointer<Curve> currentCurve = stage.curve;
+
+    // --- 阶段2: 裁剪 ---
+    if (params.clippingEnabled) {
+        if (m_registeredSteps.contains("clipping")) {
+            IProcessingStep* step = m_registeredSteps.value("clipping");
+            QVariantMap clipParams;
+            clipParams["min_x"] = params.clipMinX;
+            clipParams["max_x"] = params.clipMaxX;
+
+            ProcessingResult res = step->process({currentCurve.data()}, clipParams, error);
+
+            if (!res.namedCurves.isEmpty() && res.namedCurves.contains("clipped")) {
+                stage.stageName = StageName::Clip;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("clipped").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Clip;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+
+                sampleData.stages.append(stage);
+                currentCurve = stage.curve;
+            }
+        }
+    }
+
+    // --- 阶段3: 归一化 ---
+    if (params.normalizationEnabled) {
+        if (m_registeredSteps.contains("normalization")) {
+            IProcessingStep* step = m_registeredSteps.value("normalization");
+            QVariantMap normParams = step->defaultParameters();
+            if (params.normalizationMethod == "absmax") {
+                normParams["method"] = "absmax";
+            }
+            normParams["rangeMin"] = 0.0;
+            normParams["rangeMax"] = 100.0;
+
+            ProcessingResult res = step->process({currentCurve.data()}, normParams, error);
+
+            if (!res.namedCurves.isEmpty() && res.namedCurves.contains("normalized")) {
+                stage.stageName = StageName::Normalize;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("normalized").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Normalize;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+
+                sampleData.stages.append(stage);
+                currentCurve = stage.curve;
+            }
+        }
+    }
+
+    // --- 阶段4: 平滑 ---
+    if (params.smoothingEnabled) {
+        QString sm = QStringLiteral("loess");
+        QString methodId = (sm == "loess") ? QStringLiteral("smoothing_loess") : QStringLiteral("smoothing_sg");
+        if (m_registeredSteps.contains(methodId)) {
+            IProcessingStep* step = m_registeredSteps.value(methodId);
+            QVariantMap smoothParams;
+            smoothParams["fraction"] = params.loessSpan;
+            ProcessingResult res = step->process({currentCurve.data()}, smoothParams, error);
+            if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
+                stage.stageName = StageName::Smooth;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Smooth_Loess;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+                sampleData.stages.append(stage);
+                currentCurve = stage.curve;
+            } else {
+                WARNING_LOG << "平滑阶段无结果：未返回 smoothed 曲线";
+            }
+        } else {
+            WARNING_LOG << "未注册的平滑算法:" << methodId;
+        }
+    }
+
+    // --- 阶段5: 微分 ---
+    if (params.derivativeEnabled) {
+        const QString& derivativeMethodId = params.derivativeMethod;
+
+        if (m_registeredSteps.contains(derivativeMethodId)) {
+            IProcessingStep* step = m_registeredSteps.value(derivativeMethodId);
+
+            QVariantMap derivParams;
+            if (derivativeMethodId == "derivative_sg") {
+                derivParams["window_size"] = params.derivSgWindowSize;
+                derivParams["poly_order"] = params.derivSgPolyOrder;
+                derivParams["derivative_order"] = 1;
+            }
+
+            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
+
+            if (res.namedCurves.contains("derivative1")) {
+                stage.stageName = StageName::Derivative;
+                stage.curve = QSharedPointer<Curve>(res.namedCurves.value("derivative1").first());
+                stage.curve->setSampleId(sampleId);
+                stage.algorithm = AlgorithmType::Derivative_SG;
+                stage.isSegmented = false;
+                stage.numSegments = 1;
+
+                sampleData.stages.append(stage);
+            }
+        }
+    }
 
     return sampleData;
 }

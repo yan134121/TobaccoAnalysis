@@ -139,6 +139,35 @@ QVector<QPointF> SampleDAO::fetchChartDataForSample(int sampleId, const DataType
     return data;
 }
 
+QVector<QPointF> SampleDAO::fetchSmallRawTgData(int sampleId, QString& error)
+{
+    QVector<QPointF> data;
+    QSqlQuery query(DatabaseManager::instance().database());
+    QString queryString = "SELECT serial_no, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY serial_no";
+
+    query.prepare(queryString);
+    query.bindValue(":sample_id", sampleId);
+
+    if (!query.exec()) {
+        error = query.lastError().text();
+        WARNING_LOG << "Failed to fetch small TG raw data for sample ID" << sampleId << ":" << error;
+        return data;
+    }
+
+    while (query.next()) {
+        bool okX, okY;
+        double x = query.value(0).toDouble(&okX);
+        double y = query.value(1).toDouble(&okY);
+        if (okX && okY) {
+            data.append(QPointF(x, y));
+        } else {
+            WARNING_LOG << "Small TG raw data conversion error for sample ID" << sampleId << "at row" << query.at();
+        }
+    }
+
+    return data;
+}
+
 
 
 QList<QVariantMap> SampleDAO::getSamplesByDataType(const QString &dataType)

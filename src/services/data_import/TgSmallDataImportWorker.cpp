@@ -382,11 +382,14 @@ void TgSmallDataImportWorker::run()
             
             // 修改: 使用shared_ptr而不是原始指针
             std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, 1); // 第一列
-            std::shared_ptr<QXlsx::Cell> cellWeight = xlsx.cellAt(row, 2); // 第二列
-            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, 3); // 第三列
+            std::shared_ptr<QXlsx::Cell> cellTgValue = xlsx.cellAt(row, 2); // 第二列
+            std::shared_ptr<QXlsx::Cell> cellDtgValue = xlsx.cellAt(row, 3); // 第三列
             
             // 检查单元格是否为空
-            if (!cellTemp || !cellWeight || cellTemp->value().isNull() || cellWeight->value().isNull()) {
+            if (!cellTemp || !cellTgValue || !cellDtgValue
+                || cellTemp->value().isNull()
+                || cellTgValue->value().isNull()
+                || cellDtgValue->value().isNull()) {
                 emptyRowCount++;
                 row++;
                 continue;
@@ -396,23 +399,20 @@ void TgSmallDataImportWorker::run()
             emptyRowCount = 0;
             
             bool tempOk = false;
-            bool weightOk = false;
-            bool dtgOk = false;
+            bool tgValueOk = false;
+            bool dtgValueOk = false;
             double temperature = cellTemp->value().toDouble(&tempOk);
-            double weight = cellWeight->value().toDouble(&weightOk);
-            double dtgValue = 0.0;
-            if (cellDtg && !cellDtg->value().isNull()) {
-                dtgValue = cellDtg->value().toDouble(&dtgOk);
-            }
+            double tgValue = cellTgValue->value().toDouble(&tgValueOk);
+            double dtgValue = cellDtgValue->value().toDouble(&dtgValueOk);
             
-            if (tempOk && weightOk) {
+            if (tempOk && tgValueOk && dtgValueOk) {
                 TgSmallData data;
                 data.setSampleId(sampleId);
                 data.setSerialNo(row - 1); // 调整序列号，从0开始
                 data.setTemperature(temperature);
-                data.setWeight(weight);
-                data.setTgValue(weight);
-                data.setDtgValue(dtgOk ? dtgValue : 0.0);
+                data.setWeight(0.0);
+                data.setTgValue(tgValue);
+                data.setDtgValue(dtgValue);
                 data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
                 
                 dataList.append(data);

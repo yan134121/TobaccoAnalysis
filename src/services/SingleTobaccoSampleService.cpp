@@ -373,15 +373,14 @@ QList<TgSmallData> SingleTobaccoSampleService::parseTgSmallDataFromRawData(int s
             // continue;
         }
 
-        // 校验列索引
-        if (!currentReplicateMapping.isValidForSmallTg()) {
-            errorMessage = "小热重数据导入映射配置不完整（温度、热重值或热重微分列未指定）。";
-            return QList<TgSmallData>();
-        }
-
         int tempColIdx = currentReplicateMapping.tgSmallTemperatureColIndex - 1;
         int tgValueColIdx = currentReplicateMapping.tgSmallTgValueColIndex - 1;
         int dtgValueColIdx = currentReplicateMapping.tgSmallDtgValueColIndex - 1;
+        if (!currentReplicateMapping.isValidForSmallTg()) {
+            tempColIdx = 0;
+            tgValueColIdx = 1;
+            dtgValueColIdx = 2;
+        }
         int replicateNoColIdx = currentReplicateMapping.replicateNoColIndex - 1;
         int sourceNameColIdx = currentReplicateMapping.sourceNameColIndex - 1;
 

@@ -531,16 +531,16 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
 
                 try {
                     QString error;
-                    QVector<QPointF> points;
-                    QVector<QPointF> rawWeightPoints;
+                    QVector<QPointF> dtgPoints;
+                    QVector<QPointF> rawTgPoints;
                     QVariantMap sampleInfo;
                     
                     try {
-                        points = m_navigatorDao.getSampleCurveData(sampleId, "小热重", error);
+                        dtgPoints = m_navigatorDao.getSmallRawDtgCurveData(sampleId, error);
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本曲线数据出错:" << error;
                         }
-                        rawWeightPoints = m_navigatorDao.getSmallRawWeightCurveData(sampleId, error);
+                        rawTgPoints = m_navigatorDao.getSampleCurveData(sampleId, "小热重", error);
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本原始数据出错:" << error;
                         }
@@ -585,10 +585,10 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         curveColor = Qt::blue;
                     }
 
-                    if (!points.isEmpty()) {
+                    if (!dtgPoints.isEmpty()) {
                         try {
                             QVector<double> xData, yData;
-                            for (const QPointF& point : points) {
+                            for (const QPointF& point : dtgPoints) {
                                 xData.append(point.x());
                                 yData.append(point.y());
                             }
@@ -613,9 +613,9 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         DEBUG_LOG << "未找到样本曲线数据，样本ID:" << sampleId << ", 错误:" << error;
                     }
 
-                    if (!rawWeightPoints.isEmpty()) {
+                    if (!rawTgPoints.isEmpty()) {
                         QVector<double> xRawData, yRawData;
-                        for (const QPointF& point : rawWeightPoints) {
+                        for (const QPointF& point : rawTgPoints) {
                             xRawData.append(point.x());
                             yRawData.append(point.y());
                         }
@@ -626,7 +626,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         DEBUG_LOG << "未找到样本原始数据，样本ID:" << sampleId << ", 错误:" << error;
                     }
 
-                    if (!points.isEmpty() || !rawWeightPoints.isEmpty()) {
+                    if (!dtgPoints.isEmpty() || !rawTgPoints.isEmpty()) {
                         colorIndex++;
                     }
                 } catch (const std::exception& e) {

@@ -52,6 +52,10 @@ public:
 
     // 获取样本曲线数据
     QVector<QPointF> getSampleCurveData(int sampleId, const QString& dataType, QString& error);
+    // 获取小热重原始曲线（serial_no, tg_value）
+    QVector<QPointF> getSmallRawWeightCurveData(int sampleId, QString& error);
+    // 获取小热重原始 DTG 曲线（temperature, dtg_value）
+    QVector<QPointF> getSmallRawDtgCurveData(int sampleId, QString& error);
     
     // 获取样本详细信息（project_name, batch_code, short_code, parallel_no）
     QVariantMap getSampleDetailInfo(int sampleId, QString& error);

@@ -130,6 +130,8 @@ public:
     void setSampleCheckState(int sampleId, bool checked);
     // 按数据类型设置特定样本的复选框状态（自动展开路径）
     void setSampleCheckStateForType(int sampleId, const QString& dataType, bool checked);
+    // 按数据类型清除样本复选框状态
+    void clearSampleChecksForType(const QString& dataType);
 
     NavigatorDAO m_dao;
 

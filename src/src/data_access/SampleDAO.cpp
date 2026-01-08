@@ -89,10 +89,10 @@ QVector<QPointF> SampleDAO::fetchChartDataForSample(int sampleId, const DataType
     } else if (dataType == DataType::TG_SMALL) {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small").sql;
         if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
+            queryString = "SELECT temperature, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
         }
         xColumn = "temperature";
-        yColumn = "dtg_value";
+        yColumn = "tg_value";
     // } else if (dataType == DataType::CHROMATOGRAPHY || dataType == DataType::GC) {
        } else if (dataType == DataType::CHROMATOGRAM) {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;

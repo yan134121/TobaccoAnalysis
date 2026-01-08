@@ -213,7 +213,7 @@ QVector<QPointF> NavigatorDAO::getSampleCurveData(int sampleId, const QString &d
     } else if (dataType == "小热重") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small").sql;
         if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
+            queryString = "SELECT temperature, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
         }
     } else if (dataType == "色谱") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;

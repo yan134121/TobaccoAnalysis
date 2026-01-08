@@ -213,7 +213,7 @@ QVector<QPointF> NavigatorDAO::getSampleCurveData(int sampleId, const QString &d
     } else if (dataType == "小热重") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small").sql;
         if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
+            queryString = "SELECT serial_no, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY serial_no";
         }
     } else if (dataType == "色谱") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;
@@ -267,6 +267,60 @@ QVector<QPointF> NavigatorDAO::getSampleCurveData(int sampleId, const QString &d
             DEBUG_LOG << "NavigatorDAO::getSampleCurveData - Sample exists in database:" << (count > 0 ? "Yes" : "No");
         } else {
             DEBUG_LOG << "NavigatorDAO::getSampleCurveData - Failed to check if sample exists:" << checkQuery.lastError().text();
+        }
+    }
+
+    return data;
+}
+
+QVector<QPointF> NavigatorDAO::getSmallRawWeightCurveData(int sampleId, QString &error)
+{
+    QVector<QPointF> data;
+    QSqlQuery query(DatabaseManager::instance().database());
+    QString queryString = "SELECT serial_no, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY serial_no";
+
+    query.prepare(queryString);
+    query.bindValue(":sample_id", sampleId);
+
+    if (!query.exec()) {
+        error = query.lastError().text();
+        DEBUG_LOG << "NavigatorDAO::getSmallRawWeightCurveData - SQL Error:" << error;
+        return data;
+    }
+
+    while (query.next()) {
+        bool okX, okY;
+        double x = query.value(0).toDouble(&okX);
+        double y = query.value(1).toDouble(&okY);
+        if (okX && okY) {
+            data.append(QPointF(x, y));
+        }
+    }
+
+    return data;
+}
+
+QVector<QPointF> NavigatorDAO::getSmallRawDtgCurveData(int sampleId, QString &error)
+{
+    QVector<QPointF> data;
+    QSqlQuery query(DatabaseManager::instance().database());
+    QString queryString = "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
+
+    query.prepare(queryString);
+    query.bindValue(":sample_id", sampleId);
+
+    if (!query.exec()) {
+        error = query.lastError().text();
+        DEBUG_LOG << "NavigatorDAO::getSmallRawDtgCurveData - SQL Error:" << error;
+        return data;
+    }
+
+    while (query.next()) {
+        bool okX, okY;
+        double x = query.value(0).toDouble(&okX);
+        double y = query.value(1).toDouble(&okY);
+        if (okX && okY) {
+            data.append(QPointF(x, y));
         }
     }
 

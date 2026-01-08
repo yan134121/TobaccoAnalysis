@@ -527,7 +527,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                     QVariantMap sampleInfo;
                     
                     try {
-                        points = m_navigatorDao.getSampleCurveData(sampleId, "小热重", error);
+                        points = m_navigatorDao.getSmallRawDtgCurveData(sampleId, error);
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本曲线数据出错:" << error;
                         }

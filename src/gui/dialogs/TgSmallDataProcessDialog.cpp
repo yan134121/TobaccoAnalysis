@@ -55,6 +55,10 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializ
     // TgSmallDataProcessDialog* tab1 = new TgSmallDataProcessDialog(this, m_mainNavigator);
     // tabWidget->addTab(tab1, tr("小热重数据处理"));
 
+    // 小热重默认温度区间在 400-800 左右，避免裁剪默认 60-400 导致处理阶段为空
+    m_currentParams.clipMinX = 400.0;
+    m_currentParams.clipMaxX = 800.0;
+
     // 提前创建参数设置窗口
     m_paramDialog = new TgSmallParameterSettingsDialog(m_currentParams, this);
 
@@ -767,11 +771,11 @@ void TgSmallDataProcessDialog::setupUI()
     
     
     
+    // 新增清除曲线按钮
+    m_clearCurvesButton = new QPushButton(tr("清除曲线"), tab1Widget);
     // 新增绘制所有选中曲线与取消所有选中样本按钮
     m_drawAllButton = new QPushButton(tr("绘制所有选中曲线"), tab1Widget);
     m_unselectAllButton = new QPushButton(tr("取消所有选中样本"), tab1Widget);
-    // 新增清除曲线按钮
-    m_clearCurvesButton = new QPushButton(tr("清除曲线"), tab1Widget);
     
     
 
@@ -783,9 +787,9 @@ void TgSmallDataProcessDialog::setupUI()
     m_buttonLayout->addWidget(m_parameterButton);
     m_buttonLayout->addWidget(m_processAndPlotButton);
     m_buttonLayout->addWidget(m_startComparisonButton);
+    m_buttonLayout->addWidget(m_clearCurvesButton);
     m_buttonLayout->addWidget(m_drawAllButton);
     m_buttonLayout->addWidget(m_unselectAllButton);
-    m_buttonLayout->addWidget(m_clearCurvesButton);
 
     // m_mainLayout->addLayout(m_buttonLayout);
 
@@ -1075,10 +1079,37 @@ void TgSmallDataProcessDialog::onUnselectAllSamplesClicked()
     QSet<int> ids = SampleSelectionManager::instance()->selectedIdsByType(type);
     for (int sampleId : ids) {
         SampleSelectionManager::instance()->setSelectedWithType(sampleId, type, false, QStringLiteral("Dialog-UnselectAll"));
+        if (m_mainNavigator) {
+            m_mainNavigator->setSampleCheckStateForType(sampleId, type, false);
+        }
+    }
+
+    if (m_leftNavigator) {
+        m_suppressItemChanged = true;
+        for (int i = 0; i < m_leftNavigator->topLevelItemCount(); ++i) {
+            QTreeWidgetItem* projectItem = m_leftNavigator->topLevelItem(i);
+            if (!projectItem) continue;
+            for (int j = 0; j < projectItem->childCount(); ++j) {
+                QTreeWidgetItem* batchItem = projectItem->child(j);
+                if (!batchItem) continue;
+                for (int k = 0; k < batchItem->childCount(); ++k) {
+                    QTreeWidgetItem* sampleItem = batchItem->child(k);
+                    if (!sampleItem) continue;
+                    sampleItem->setCheckState(0, Qt::Unchecked);
+                }
+            }
+        }
+        m_suppressItemChanged = false;
     }
 
     m_selectedSamples.clear();
     m_visibleSamples.clear();
+    if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    updateLegendPanel();
     updateSelectedSamplesList();
 }
 
@@ -1086,6 +1117,10 @@ void TgSmallDataProcessDialog::onClearCurvesClicked()
 {
     // 仅清除绘图区域的曲线；不改变“被选中样本”，只将其设为不可见
     if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();

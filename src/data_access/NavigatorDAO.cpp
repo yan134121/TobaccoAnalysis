@@ -288,14 +288,25 @@ QVector<QPointF> NavigatorDAO::getSmallRawWeightCurveData(int sampleId, QString 
         return data;
     }
 
+    int totalRows = 0;
+    QStringList tgValues;
+    tgValues.reserve(10);
     while (query.next()) {
         bool okX, okY;
         double x = query.value(0).toDouble(&okX);
         double y = query.value(1).toDouble(&okY);
         if (okX && okY) {
             data.append(QPointF(x, y));
+            if (tgValues.size() < 10) {
+                tgValues.append(QString::number(y, 'g', 12));
+            }
         }
+        ++totalRows;
     }
+
+    DEBUG_LOG << "NavigatorDAO::getSmallRawWeightCurveData - sampleId" << sampleId
+              << "rows" << totalRows << "tg_value(first 10):"
+              << (tgValues.isEmpty() ? QStringLiteral("none") : tgValues.join(", "));
 
     return data;
 }

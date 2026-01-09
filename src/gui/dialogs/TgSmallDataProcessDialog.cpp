@@ -544,6 +544,19 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本原始数据出错:" << error;
                         }
+                        if (!rawTgPoints.isEmpty()) {
+                            const int maxCount = qMin(10, rawTgPoints.size());
+                            QStringList tgValues;
+                            tgValues.reserve(maxCount);
+                            for (int i = 0; i < maxCount; ++i) {
+                                tgValues.append(QString::number(rawTgPoints.at(i).y(), 'g', 12));
+                            }
+                            DEBUG_LOG << "小热重原始tg_value sampleId" << sampleId
+                                      << "count" << rawTgPoints.size()
+                                      << "first" << maxCount << ":" << tgValues.join(", ");
+                        } else {
+                            DEBUG_LOG << "小热重原始tg_value为空 sampleId" << sampleId;
+                        }
                     } catch (const std::exception& e) {
                         DEBUG_LOG << "获取样本曲线数据异常:" << e.what();
                         continue;

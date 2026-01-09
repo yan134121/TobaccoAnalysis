@@ -969,9 +969,9 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
 void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
 {
     // 1. 打开文件选择对话框
-    QString filePath = QFileDialog::getOpenFileName(this, tr("选择小热重数据文件"), 
-                                                   QDir::homePath(), 
-                                                   tr("CSV文件 (*.csv)"));
+    QString filePath = QFileDialog::getOpenFileName(this, tr("选择小热重数据文件"),
+                                                   QDir::homePath(),
+                                                   tr("Excel文件 (*.xlsx)"));
     if (filePath.isEmpty()) {
         emit statusMessage(tr("未选择文件，操作已取消。"), 3000);
         return;
@@ -1100,7 +1100,7 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
                     }
                     
                     if (successCount > 0) {
-                        QString msg = tr("导入成功：%1 个文件，共 %2 条数据。").arg(successCount).arg(totalDataCount);
+                        QString msg = tr("导入成功：%1 个工作表，共 %2 条数据。").arg(successCount).arg(totalDataCount);
                         QMessageBox::information(this, tr("导入完成"), msg);
                         emit statusMessage(msg, 5000);
                         
@@ -1109,14 +1109,14 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
                         // 通知主窗口刷新导航树（数据源）
                         emit dataImportFinished("TG_SMALL");
                     } else {
-                        QString detailedMsg = tr("导入失败：未从CSV文件中提取到有效数据。\n\n可能的原因：\n"
-                                              "1. CSV文件格式不正确\n"
-                                              "2. 文件名未包含有效的样本编号\n"
+                        QString detailedMsg = tr("导入失败：未从Excel文件中提取到有效数据。\n\n可能的原因：\n"
+                                              "1. Excel文件格式不正确\n"
+                                              "2. 工作表名称不包含有效的样本编号\n"
                                               "3. 温度列或DTG列设置错误\n"
                                               "4. 数据不是有效的数字格式\n\n"
-                                              "请检查CSV文件与列设置后重试。");
+                                              "请检查Excel文件与列设置后重试。");
                         QMessageBox::warning(this, tr("导入错误"), detailedMsg);
-                        emit statusMessage(tr("导入失败：未从CSV文件中提取到有效数据"), 5000);
+                        emit statusMessage(tr("导入失败：未从Excel文件中提取到有效数据"), 5000);
                     }
                 });
         

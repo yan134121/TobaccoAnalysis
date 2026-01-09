@@ -1,3 +1,5 @@
+#include "third_party/QXlsx/header/xlsxdocument.h"
+
 #include "services/data_import/TgSmallDataImportWorker.h"
 #include "core/entities/TgSmallData.h"
 #include "data_access/TgSmallDataDAO.h"
@@ -306,36 +308,26 @@ void TgSmallDataImportWorker::run()
         return;
     }
 
-    QFile csvFile(filePath);
-    if (!csvFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        emit importError("无法打开CSV文件，请检查文件路径或权限");
+    emit progressMessage("正在打开Excel文件...");
+    QXlsx::Document xlsx(filePath);
+    if (!xlsx.load()) {
+        emit importError("无法打开Excel文件，请检查文件格式是否正确");
+        return;
+    }
+
+    QStringList sheetNames = xlsx.sheetNames();
+    if (sheetNames.isEmpty()) {
+        emit importError("Excel文件中没有找到任何工作表");
         return;
     }
 
     emit progressMessage("开始导入数据...");
-    emit progressChanged(0, 1);
+    emit progressChanged(0, sheetNames.size());
 
-    QString shortCode = extractShortCodeFromSheetName(QFileInfo(filePath).baseName());
-    SingleTobaccoSampleData sampleData;
-    sampleData.setProjectName(projectName);
-    sampleData.setBatchCode(batchCode);
-    sampleData.setShortCode(shortCode);
-    sampleData.setParallelNo(parallelNo);
+    int successCount = 0;
+    int totalDataCount = 0;
 
-    int sampleId = createOrGetSample(sampleData);
-    if (sampleId <= 0) {
-        emit importError("无法创建或获取有效的样本ID，请检查文件名和样本信息");
-        return;
-    }
-
-    QList<TgSmallData> dataList;
-    QTextStream in(&csvFile);
-    int rowIndex = 0;
-    const int temperatureColumnIndex = temperatureColumn - 1;
-    const int dtgColumnIndex = dtgColumn - 1;
-
-    while (!in.atEnd()) {
-        // 检查是否被要求停止
+    for (int i = 0; i < sheetNames.size(); i++) {
         {
             QMutexLocker locker(&m_mutex);
             if (m_stopped) {
@@ -344,57 +336,91 @@ void TgSmallDataImportWorker::run()
             }
         }
 
-        QString line = in.readLine();
-        rowIndex++;
-        if (line.trimmed().isEmpty()) {
+        QString sheetName = sheetNames[i];
+        emit progressMessage("正在处理工作表: " + sheetName);
+        emit progressChanged(i, sheetNames.size());
+
+        xlsx.selectSheet(sheetName);
+
+        QString shortCode = extractShortCodeFromSheetName(sheetName);
+
+        SingleTobaccoSampleData sampleData;
+        sampleData.setProjectName(projectName);
+        sampleData.setBatchCode(batchCode);
+        sampleData.setShortCode(shortCode);
+        sampleData.setParallelNo(parallelNo);
+
+        int sampleId = createOrGetSample(sampleData);
+        if (sampleId <= 0) {
+            emit progressMessage("警告: 无法创建或获取有效的样本ID，跳过工作表: " + sheetName);
             continue;
         }
 
-        const QStringList fields = line.split(",");
-        if (fields.size() <= qMax(temperatureColumnIndex, dtgColumnIndex)) {
-            continue;
-        }
+        QList<TgSmallData> dataList;
+        int row = 2;
+        int maxEmptyRows = 5;
+        int emptyRowCount = 0;
 
-        bool tempOk = false;
-        bool dtgOk = false;
-        double temperature = fields.at(temperatureColumnIndex).trimmed().toDouble(&tempOk);
-        double dtgValue = fields.at(dtgColumnIndex).trimmed().toDouble(&dtgOk);
-
-        if (!tempOk || !dtgOk) {
-            continue;
-        }
-
-        TgSmallData data;
-        data.setSampleId(sampleId);
-        data.setSerialNo(dataList.size());
-        data.setTemperature(temperature);
-        data.setWeight(0.0);
-        data.setTgValue(0.0);
-        data.setDtgValue(dtgValue);
-        data.setSourceName(QFileInfo(filePath).fileName());
-
-        dataList.append(data);
-    }
-
-    emit progressMessage("文件共读取了 " + QString::number(dataList.size()) + " 条数据");
-
-    int successCount = 0;
-    int totalDataCount = 0;
-    if (!dataList.isEmpty()) {
-        if (m_tgSmallDataDao) {
-            m_tgSmallDataDao->removeBySampleId(sampleId);
-            bool saveResult = m_tgSmallDataDao->insertBatch(dataList);
-            if (saveResult) {
-                totalDataCount = dataList.size();
-                successCount = 1;
-            } else {
-                emit progressMessage("警告: 保存数据失败");
+        while (emptyRowCount < maxEmptyRows && row < 1000) {
+            {
+                QMutexLocker locker(&m_mutex);
+                if (m_stopped) {
+                    emit importError("用户取消了导入操作");
+                    return;
+                }
             }
-        } else {
-            emit progressMessage("警告: 数据访问对象未初始化，无法保存数据");
+
+            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, temperatureColumn);
+            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
+
+            if (!cellTemp || !cellDtg || cellTemp->value().isNull() || cellDtg->value().isNull()) {
+                emptyRowCount++;
+                row++;
+                continue;
+            }
+
+            emptyRowCount = 0;
+
+            bool tempOk = false;
+            bool dtgOk = false;
+            double temperature = cellTemp->value().toDouble(&tempOk);
+            double dtgValue = cellDtg->value().toDouble(&dtgOk);
+
+            if (tempOk && dtgOk) {
+                TgSmallData data;
+                data.setSampleId(sampleId);
+                data.setSerialNo(dataList.size());
+                data.setTemperature(temperature);
+                data.setWeight(0.0);
+                data.setTgValue(0.0);
+                data.setDtgValue(dtgValue);
+                data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
+
+                dataList.append(data);
+            }
+
+            row++;
+        }
+
+        emit progressMessage("工作表 " + sheetName + " 共读取了 " + QString::number(dataList.size()) + " 条数据");
+
+        if (!dataList.isEmpty()) {
+            if (m_tgSmallDataDao) {
+                m_tgSmallDataDao->removeBySampleId(sampleId);
+
+                bool saveResult = m_tgSmallDataDao->insertBatch(dataList);
+                if (saveResult) {
+                    totalDataCount += dataList.size();
+                    successCount++;
+                } else {
+                    emit progressMessage("警告: 保存数据失败，工作表: " + sheetName);
+                }
+            } else {
+                emit progressMessage("警告: 数据访问对象未初始化，无法保存数据");
+            }
         }
     }
 
-    emit progressChanged(1, 1);
+    emit progressChanged(sheetNames.size(), sheetNames.size());
     emit importFinished(successCount, totalDataCount);
 }

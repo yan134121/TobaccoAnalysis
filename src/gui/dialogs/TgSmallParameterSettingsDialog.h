@@ -44,6 +44,7 @@ public:
 
     // 公共接口，用于获取用户最终设置的参数
     ProcessingParameters getParameters() const;
+    void setParameters(const ProcessingParameters& params);
 
 // 【关键】增加一个新的信号
 signals:
@@ -67,7 +68,6 @@ private:
     QWidget* createDifferenceTab();
     
     // 从传入的参数初始化UI
-    void setParameters(const ProcessingParameters& params);
 
     // --- UI 控件成员变量 ---
     QTabWidget* m_tabWidget;

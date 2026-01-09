@@ -24,6 +24,7 @@
 #include <QCursor>
 #include <QStyle>
 #include <QStyleOptionViewItem>
+#include <limits>
 
 TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
     QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
@@ -54,10 +55,6 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializ
     // // =========================
     // TgSmallDataProcessDialog* tab1 = new TgSmallDataProcessDialog(this, m_mainNavigator);
     // tabWidget->addTab(tab1, tr("小热重数据处理"));
-
-    // 小热重默认温度区间在 400-800 左右，避免裁剪默认 60-400 导致处理阶段为空
-    m_currentParams.clipMinX = 400.0;
-    m_currentParams.clipMaxX = 800.0;
 
     // 提前创建参数设置窗口
     m_paramDialog = new TgSmallParameterSettingsDialog(m_currentParams, this);
@@ -2137,6 +2134,35 @@ void TgSmallDataProcessDialog::recalculateAndUpdatePlot()
 
     DEBUG_LOG << "TgSmallDataProcessDialog::recalculateAndUpdatePlot() - Processing samples:"
               << idStrList.join(", ");
+
+    if (m_currentParams.clippingEnabled
+        && qFuzzyCompare(m_currentParams.clipMinX, 60.0)
+        && qFuzzyCompare(m_currentParams.clipMaxX, 400.0)) {
+        double minX = std::numeric_limits<double>::max();
+        double maxX = std::numeric_limits<double>::lowest();
+        bool hasRange = false;
+
+        for (int sampleId : sampleIds) {
+            QString error;
+            QVector<QPointF> rawTgPoints = m_navigatorDao.getSmallRawWeightCurveData(sampleId, error);
+            if (!error.isEmpty()) {
+                DEBUG_LOG << "获取样本原始数据出错:" << error;
+            }
+            for (const QPointF& point : rawTgPoints) {
+                minX = qMin(minX, point.x());
+                maxX = qMax(maxX, point.x());
+                hasRange = true;
+            }
+        }
+
+        if (hasRange && minX < maxX) {
+            m_currentParams.clipMinX = minX;
+            m_currentParams.clipMaxX = maxX;
+            if (m_paramDialog) {
+                m_paramDialog->setParameters(m_currentParams);
+            }
+        }
+    }
 
     // --- 3. 异步调用 Service 层 (使用新数据结构 BatchGroupData) ---
     QFuture<BatchGroupData> future = QtConcurrent::run(

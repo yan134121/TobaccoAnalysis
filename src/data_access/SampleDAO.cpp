@@ -166,6 +166,33 @@ QVector<QPointF> SampleDAO::fetchSmallRawWeightData(int sampleId, QString &error
     return data;
 }
 
+QVector<QPointF> SampleDAO::fetchSmallRawDtgData(int sampleId, QString &error)
+{
+    QVector<QPointF> data;
+    QSqlQuery query(DatabaseManager::instance().database());
+    QString queryString = "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
+
+    query.prepare(queryString);
+    query.bindValue(":sample_id", sampleId);
+
+    if (!query.exec()) {
+        error = query.lastError().text();
+        WARNING_LOG << "Failed to fetch small TG raw DTG data for sample ID" << sampleId << ":" << error;
+        return data;
+    }
+
+    while (query.next()) {
+        bool okX, okY;
+        double x = query.value(0).toDouble(&okX);
+        double y = query.value(1).toDouble(&okY);
+        if (okX && okY) {
+            data.append(QPointF(x, y));
+        }
+    }
+
+    return data;
+}
+
 
 
 QList<QVariantMap> SampleDAO::getSamplesByDataType(const QString &dataType)

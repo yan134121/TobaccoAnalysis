@@ -544,6 +544,19 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本原始数据出错:" << error;
                         }
+                        if (!rawTgPoints.isEmpty()) {
+                            const int maxCount = qMin(10, rawTgPoints.size());
+                            QStringList tgValues;
+                            tgValues.reserve(maxCount);
+                            for (int i = 0; i < maxCount; ++i) {
+                                tgValues.append(QString::number(rawTgPoints.at(i).y(), 'g', 12));
+                            }
+                            DEBUG_LOG << "小热重原始tg_value sampleId" << sampleId
+                                      << "count" << rawTgPoints.size()
+                                      << "first" << maxCount << ":" << tgValues.join(", ");
+                        } else {
+                            DEBUG_LOG << "小热重原始tg_value为空 sampleId" << sampleId;
+                        }
                     } catch (const std::exception& e) {
                         DEBUG_LOG << "获取样本曲线数据异常:" << e.what();
                         continue;
@@ -2296,6 +2309,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView3) {
             m_chartView3->setLegendVisible(false);
+            m_chartView3->resetAxisRangeToData();
             m_chartView3->replot();
         }
 
@@ -2322,6 +2336,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView4) {
             m_chartView4->setLegendVisible(false);
+            m_chartView4->resetAxisRangeToData();
             m_chartView4->replot();
         }
 
@@ -2348,6 +2363,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView5) {
             m_chartView5->setLegendVisible(false);
+            m_chartView5->resetAxisRangeToData();
             m_chartView5->replot();
         }
 
@@ -2374,6 +2390,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView6) {
             m_chartView6->setLegendVisible(false);
+            m_chartView6->resetAxisRangeToData();
             m_chartView6->replot();
         }
 

@@ -467,10 +467,10 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     QString error;
     SampleDAO dao;
 
-    // --- 1. 获取原始数据 ---
-    QVector<QPointF> rawPoints = dao.fetchSmallRawWeightData(sampleId, error);
+    // --- 1. 获取原始DTG数据 ---
+    QVector<QPointF> rawPoints = dao.fetchSmallRawDtgData(sampleId, error);
     if (rawPoints.isEmpty()) {
-        WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
+        WARNING_LOG << "Pipeline failed: No raw DTG data for sample" << sampleId;
         return sampleData;
     }
 
@@ -483,7 +483,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     // 构造阶段数据
     StageData stage;
     stage.stageName = StageName::RawData;
-    stage.curve = QSharedPointer<Curve>::create(x, y, "原始数据");
+    stage.curve = QSharedPointer<Curve>::create(x, y, "原始DTG数据");
     stage.curve->setSampleId(sampleId);
     stage.algorithm = AlgorithmType::None;
     stage.isSegmented = false;

@@ -36,6 +36,7 @@ public:
     void highlightGraph(const QString& name);
     void clearGraphs();
     void setLabels(const QString& xLabel, const QString& yLabel);
+    void setXAxisRange(double min, double max);
     void setPlotTitle(const QString& titleText);
     void setLegendName(const QString &legendName);
     void setLegendVisible(bool visible);

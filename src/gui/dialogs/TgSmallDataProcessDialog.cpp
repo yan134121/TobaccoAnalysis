@@ -2287,10 +2287,33 @@ void TgSmallDataProcessDialog::updatePlot()
         }
 
         int colorIndex = 0;
+        double clipMaxX = 0.0;
+        double normalizeMaxX = 0.0;
+        double smoothMaxX = 0.0;
+        double derivativeMaxX = 0.0;
+        bool hasClipData = false;
+        bool hasNormalizeData = false;
+        bool hasSmoothData = false;
+        bool hasDerivativeData = false;
+        auto updateMaxX = [](double& maxX, bool& hasData, const QSharedPointer<Curve>& curve) {
+            if (!curve) {
+                return;
+            }
+            const auto& points = curve->data();
+            if (points.isEmpty()) {
+                return;
+            }
+            for (const auto& point : points) {
+                if (!hasData || point.x() > maxX) {
+                    maxX = point.x();
+                    hasData = true;
+                }
+            }
+        };
 
         if (m_chartView3) {
             m_chartView3->clearGraphs();
-            m_chartView3->setLabels(tr("序号"), tr("重量"));
+            m_chartView3->setLabels(tr("序号"), tr(""));
             m_chartView3->setPlotTitle("裁剪数据");
         }
 
@@ -2303,6 +2326,7 @@ void TgSmallDataProcessDialog::updatePlot()
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView3) m_chartView3->addCurve(curve);
+                        updateMaxX(clipMaxX, hasClipData, curve);
                     }
                 }
             }
@@ -2312,12 +2336,15 @@ void TgSmallDataProcessDialog::updatePlot()
             m_chartView3->setLegendVisible(false);
             m_chartView3->resetAxisRangeToData();
             m_chartView3->replot();
+            if (hasClipData) {
+                m_chartView3->setXAxisRange(0.0, clipMaxX);
+            }
         }
 
         colorIndex = 0;
         if (m_chartView4) {
             m_chartView4->clearGraphs();
-            m_chartView4->setLabels(tr(""), tr("热重微分值"));
+            m_chartView4->setLabels(tr(""), tr(""));
             m_chartView4->setPlotTitle("归一化数据");
         }
 
@@ -2330,6 +2357,7 @@ void TgSmallDataProcessDialog::updatePlot()
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView4) m_chartView4->addCurve(curve);
+                        updateMaxX(normalizeMaxX, hasNormalizeData, curve);
                     }
                 }
             }
@@ -2339,12 +2367,15 @@ void TgSmallDataProcessDialog::updatePlot()
             m_chartView4->setLegendVisible(false);
             m_chartView4->resetAxisRangeToData();
             m_chartView4->replot();
+            if (hasNormalizeData) {
+                m_chartView4->setXAxisRange(0.0, normalizeMaxX);
+            }
         }
 
         colorIndex = 0;
         if (m_chartView5) {
             m_chartView5->clearGraphs();
-            m_chartView5->setLabels(tr("序号"), tr("热重微分值"));
+            m_chartView5->setLabels(tr("序号"), tr(""));
             m_chartView5->setPlotTitle("平滑数据");
         }
 
@@ -2357,6 +2388,7 @@ void TgSmallDataProcessDialog::updatePlot()
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView5) m_chartView5->addCurve(curve);
+                        updateMaxX(smoothMaxX, hasSmoothData, curve);
                     }
                 }
             }
@@ -2366,6 +2398,9 @@ void TgSmallDataProcessDialog::updatePlot()
             m_chartView5->setLegendVisible(false);
             m_chartView5->resetAxisRangeToData();
             m_chartView5->replot();
+            if (hasSmoothData) {
+                m_chartView5->setXAxisRange(0.0, smoothMaxX);
+            }
         }
 
         colorIndex = 0;
@@ -2384,6 +2419,7 @@ void TgSmallDataProcessDialog::updatePlot()
                         QSharedPointer<Curve> curve = stage.curve;
                         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
                         if (m_chartView6) m_chartView6->addCurve(curve);
+                        updateMaxX(derivativeMaxX, hasDerivativeData, curve);
                     }
                 }
             }
@@ -2393,6 +2429,9 @@ void TgSmallDataProcessDialog::updatePlot()
             m_chartView6->setLegendVisible(false);
             m_chartView6->resetAxisRangeToData();
             m_chartView6->replot();
+            if (hasDerivativeData) {
+                m_chartView6->setXAxisRange(0.0, derivativeMaxX);
+            }
         }
 
         DEBUG_LOG << "图表更新完成";

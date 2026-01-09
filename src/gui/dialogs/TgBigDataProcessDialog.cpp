@@ -1480,7 +1480,29 @@ void TgBigDataProcessDialog::updatePlot()
 
     //根据索引计算颜色
     int colorIndex = 0;
-
+    double clipMaxX = 0.0;
+    double normalizeMaxX = 0.0;
+    double smoothMaxX = 0.0;
+    double derivativeMaxX = 0.0;
+    bool hasClipData = false;
+    bool hasNormalizeData = false;
+    bool hasSmoothData = false;
+    bool hasDerivativeData = false;
+    auto updateMaxX = [](double& maxX, bool& hasData, const QSharedPointer<Curve>& curve) {
+        if (!curve) {
+            return;
+        }
+        const auto& points = curve->data();
+        if (points.isEmpty()) {
+            return;
+        }
+        for (const auto& point : points) {
+            if (!hasData || point.x() > maxX) {
+                maxX = point.x();
+                hasData = true;
+            }
+        }
+    };
 
 
     // // --- 1. 更新【原始数据】图表 (m_chartView1) ---
@@ -1501,7 +1523,7 @@ void TgBigDataProcessDialog::updatePlot()
 
     // --- 2. 更新【裁剪】图表 (m_chartView2) ---
     m_chartView2->clearGraphs();
-    m_chartView2->setLabels(tr(""), tr("重量"));
+    m_chartView2->setLabels(tr(""), tr(""));
     m_chartView2->setPlotTitle("裁剪数据");
 
     // for (int sampleId : m_selectedSamples.keys()) {
@@ -1574,6 +1596,7 @@ void TgBigDataProcessDialog::updatePlot()
                     // DEBUG_LOG << "    Adding cleaned curve:" << curve->name();
 
                     m_chartView2->addCurve(curve);
+                    updateMaxX(clipMaxX, hasClipData, curve);
                     // m_chartView2->setLegendVisible(false);
 
                     // DEBUG_LOG << "    Added cleaned curve:" << legendName;
@@ -1594,13 +1617,16 @@ void TgBigDataProcessDialog::updatePlot()
 
     m_chartView2->setLegendVisible(false);// 放在循环里面会导致绘图时长暴增，特别是曲线多的时候
     m_chartView2->replot();
+    if (hasClipData) {
+        m_chartView2->setXAxisRange(0.0, clipMaxX);
+    }
 
     DEBUG_LOG << "大热重裁剪数据后绘图用时：" << timer.elapsed() << "ms";
     timer.restart();
 
     // --- 2. 更新【归一化】图表 (m_chartView3) ---
     m_chartView3->clearGraphs();
-    m_chartView3->setLabels(tr(""), tr("重量"));
+    m_chartView3->setLabels(tr(""), tr(""));
     m_chartView3->setPlotTitle("归一化数据");
 
     colorIndex = 0;
@@ -1628,6 +1654,7 @@ void TgBigDataProcessDialog::updatePlot()
                     DEBUG_LOG << "    Adding normalized curve:" << curve->name();
 
                     m_chartView3->addCurve(curve);
+                    updateMaxX(normalizeMaxX, hasNormalizeData, curve);
                     // m_chartView3->setLegendVisible(false);
 
                     // DEBUG_LOG << "    Added normalized curve:" << legendName;
@@ -1639,13 +1666,16 @@ void TgBigDataProcessDialog::updatePlot()
     m_chartView3->setLegendVisible(false);// 放在循环里面会导致绘图时长暴增，特别是曲线多的时候
 
     m_chartView3->replot();
+    if (hasNormalizeData) {
+        m_chartView3->setXAxisRange(0.0, normalizeMaxX);
+    }
 
     DEBUG_LOG << "大热重归一化数据后绘图用时：" << timer.elapsed() << "ms";
     timer.restart();
 
     // --- 4. 更新【平滑】图表 (m_chartView4) ---
     m_chartView4->clearGraphs();
-    m_chartView4->setLabels(tr(""), tr("重量"));
+    m_chartView4->setLabels(tr(""), tr(""));
     m_chartView4->setPlotTitle("平滑数据");
 
     colorIndex = 0;
@@ -1673,6 +1703,7 @@ void TgBigDataProcessDialog::updatePlot()
                     DEBUG_LOG << "    Adding smoothed curve:" << curve->name();
 
                     m_chartView4->addCurve(curve);
+                    updateMaxX(smoothMaxX, hasSmoothData, curve);
                     // m_chartView4->setLegendVisible(false);
 
                     // DEBUG_LOG << "    Added normalized curve:" << legendName;
@@ -1682,6 +1713,9 @@ void TgBigDataProcessDialog::updatePlot()
     }
     m_chartView4->setLegendVisible(false);
     m_chartView4->replot();
+    if (hasSmoothData) {
+        m_chartView4->setXAxisRange(0.0, smoothMaxX);
+    }
 
     DEBUG_LOG << "大热重平滑数据后绘图用时：" << timer.elapsed() << "ms";
     timer.restart();
@@ -1716,6 +1750,7 @@ void TgBigDataProcessDialog::updatePlot()
                     DEBUG_LOG << "    Adding derivative curve:" << curve->name();
 
                     m_chartView5->addCurve(curve);
+                    updateMaxX(derivativeMaxX, hasDerivativeData, curve);
                     // m_chartView5->setLegendVisible(false);
 
                     // DEBUG_LOG << "    Added normalized curve:" << legendName;
@@ -1725,6 +1760,9 @@ void TgBigDataProcessDialog::updatePlot()
     }
     m_chartView5->setLegendVisible(false);
     m_chartView5->replot();
+    if (hasDerivativeData) {
+        m_chartView5->setXAxisRange(0.0, derivativeMaxX);
+    }
 
     DEBUG_LOG << "大热重微分数据后绘图用时：" << timer.elapsed() << "ms";
     timer.restart();

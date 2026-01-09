@@ -745,6 +745,16 @@ void ChartView::setLabels(const QString &xLabel, const QString &yLabel)
     m_plot->yAxis->setLabel(yLabel);
 }
 
+void ChartView::setXAxisRange(double min, double max)
+{
+    if (!m_plot) {
+        return;
+    }
+
+    m_plot->xAxis->setRange(min, max);
+    m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
 // 假设在 ChartView 类中封装
 // void ChartView::setPlotTitle(const QString& titleText)
 // {

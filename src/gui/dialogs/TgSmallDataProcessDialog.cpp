@@ -544,6 +544,19 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本原始数据出错:" << error;
                         }
+                        if (!rawTgPoints.isEmpty()) {
+                            const int maxCount = qMin(10, rawTgPoints.size());
+                            QStringList tgValues;
+                            tgValues.reserve(maxCount);
+                            for (int i = 0; i < maxCount; ++i) {
+                                tgValues.append(QString::number(rawTgPoints.at(i).y(), 'g', 12));
+                            }
+                            DEBUG_LOG << "小热重原始tg_value sampleId" << sampleId
+                                      << "count" << rawTgPoints.size()
+                                      << "first" << maxCount << ":" << tgValues.join(", ");
+                        } else {
+                            DEBUG_LOG << "小热重原始tg_value为空 sampleId" << sampleId;
+                        }
                     } catch (const std::exception& e) {
                         DEBUG_LOG << "获取样本曲线数据异常:" << e.what();
                         continue;
@@ -2276,7 +2289,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView3) {
             m_chartView3->clearGraphs();
-            m_chartView3->setLabels(tr(""), tr("重量"));
+            m_chartView3->setLabels(tr(""), tr("热重微分值"));
             m_chartView3->setPlotTitle("裁剪数据");
         }
 
@@ -2296,13 +2309,14 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView3) {
             m_chartView3->setLegendVisible(false);
+            m_chartView3->resetAxisRangeToData();
             m_chartView3->replot();
         }
 
         colorIndex = 0;
         if (m_chartView4) {
             m_chartView4->clearGraphs();
-            m_chartView4->setLabels(tr(""), tr("重量"));
+            m_chartView4->setLabels(tr(""), tr("热重微分值"));
             m_chartView4->setPlotTitle("归一化数据");
         }
 
@@ -2322,13 +2336,14 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView4) {
             m_chartView4->setLegendVisible(false);
+            m_chartView4->resetAxisRangeToData();
             m_chartView4->replot();
         }
 
         colorIndex = 0;
         if (m_chartView5) {
             m_chartView5->clearGraphs();
-            m_chartView5->setLabels(tr(""), tr("重量"));
+            m_chartView5->setLabels(tr(""), tr("热重微分值"));
             m_chartView5->setPlotTitle("平滑数据");
         }
 
@@ -2348,13 +2363,14 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView5) {
             m_chartView5->setLegendVisible(false);
+            m_chartView5->resetAxisRangeToData();
             m_chartView5->replot();
         }
 
         colorIndex = 0;
         if (m_chartView6) {
             m_chartView6->clearGraphs();
-            m_chartView6->setLabels(tr(""), tr("重量"));
+            m_chartView6->setLabels(tr(""), tr("热重微分值"));
             m_chartView6->setPlotTitle("微分数据");
         }
 
@@ -2374,6 +2390,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView6) {
             m_chartView6->setLegendVisible(false);
+            m_chartView6->resetAxisRangeToData();
             m_chartView6->replot();
         }
 

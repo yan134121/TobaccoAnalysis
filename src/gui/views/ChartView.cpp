@@ -3,7 +3,8 @@
 #include "ColorUtils.h"
 #include <QMessageBox>
 #include <algorithm>
-    #include <QElapsedTimer>
+#include <limits>
+#include <QElapsedTimer>
 // ：图标着色与自定义光标需要的绘图类
 #include <QPainter>
 #include <QPixmap>
@@ -882,6 +883,42 @@ void ChartView::replot()
     DEBUG_LOG << "ChartView::replot - Replot completed";
 
     DEBUG_LOG << "ChartView::绘图replot - Time taken (ms):" << timer.elapsed();
+}
+
+void ChartView::resetAxisRangeToData()
+{
+    if (!m_plot) {
+        return;
+    }
+
+    if (m_plot->graphCount() == 0) {
+        return;
+    }
+
+    double xMin = std::numeric_limits<double>::max();
+    double xMax = std::numeric_limits<double>::lowest();
+    double yMin = std::numeric_limits<double>::max();
+    double yMax = std::numeric_limits<double>::lowest();
+
+    for (int i = 0; i < m_plot->graphCount(); ++i) {
+        QCPGraph* graph = m_plot->graph(i);
+        if (!graph || !graph->data()) {
+            continue;
+        }
+        const QCPGraphDataContainer::const_iterator begin = graph->data()->constBegin();
+        const QCPGraphDataContainer::const_iterator end = graph->data()->constEnd();
+        for (auto it = begin; it != end; ++it) {
+            xMin = qMin(xMin, it->key);
+            xMax = qMax(xMax, it->key);
+            yMin = qMin(yMin, it->value);
+            yMax = qMax(yMax, it->value);
+        }
+    }
+
+    if (xMin <= xMax && yMin <= yMax) {
+        m_plot->xAxis->setRange(xMin, xMax);
+        m_plot->yAxis->setRange(yMin, yMax);
+    }
 }
 
 // void ChartView::setToolMode(const QString &toolId)

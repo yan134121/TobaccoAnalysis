@@ -24,6 +24,8 @@ public:
     QVector<QPointF> fetchChartDataForSample(int sampleId, const DataType dataType, QString& error);
     // 获取小热重原始数据（serial_no, weight）
     QVector<QPointF> fetchSmallRawWeightData(int sampleId, QString& error);
+    // 获取小热重原始DTG数据（temperature, dtg_value）
+    QVector<QPointF> fetchSmallRawDtgData(int sampleId, QString& error);
 
     QList<QVariantMap> getSamplesByDataType(const QString &dataType);
     

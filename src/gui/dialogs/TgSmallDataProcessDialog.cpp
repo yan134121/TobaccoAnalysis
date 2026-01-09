@@ -504,6 +504,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
         
         try {
             m_chartView1->setPlotTitle("原始DTG数据");
+            m_chartView2->setLabels(tr("序号"), tr("重量"));
             m_chartView2->setPlotTitle("原始数据");
         } catch (const std::exception& e) {
             DEBUG_LOG << "设置图表标题异常:" << e.what();
@@ -2289,7 +2290,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView3) {
             m_chartView3->clearGraphs();
-            m_chartView3->setLabels(tr(""), tr("热重微分值"));
+            m_chartView3->setLabels(tr("序号"), tr("重量"));
             m_chartView3->setPlotTitle("裁剪数据");
         }
 
@@ -2343,7 +2344,7 @@ void TgSmallDataProcessDialog::updatePlot()
         colorIndex = 0;
         if (m_chartView5) {
             m_chartView5->clearGraphs();
-            m_chartView5->setLabels(tr(""), tr("热重微分值"));
+            m_chartView5->setLabels(tr("序号"), tr("热重微分值"));
             m_chartView5->setPlotTitle("平滑数据");
         }
 

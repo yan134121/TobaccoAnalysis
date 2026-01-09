@@ -510,7 +510,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
         repairParams["eps_scale"]      = params.epsScale;
         repairParams["interp_method"]  = params.interpMethod;
 
-        ProcessingResult res = step->process({rawCurve.data()}, repairParams, error);
+        ProcessingResult res = step->process({currentCurve.data()}, repairParams, error);
 
         if (!res.namedCurves.isEmpty() && res.namedCurves.contains("repaired")) {
             stage.stageName = StageName::BadPointRepair;
@@ -521,6 +521,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             stage.numSegments = 1;
 
             sampleData.stages.append(stage);
+            currentCurve = stage.curve;
         }
     }
 
@@ -532,7 +533,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             clipParams["min_x"] = params.clipMinX;
             clipParams["max_x"] = params.clipMaxX;
 
-            ProcessingResult res = step->process({rawCurve.data()}, clipParams, error);
+            ProcessingResult res = step->process({currentCurve.data()}, clipParams, error);
 
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("clipped")) {
                 stage.stageName = StageName::Clip;
@@ -543,6 +544,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
+                currentCurve = stage.curve;
             }
         }
     }
@@ -559,7 +561,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             normParams["rangeMin"] = 0.0;
             normParams["rangeMax"] = 100.0;
 
-            ProcessingResult res = step->process({rawCurve.data()}, normParams, error);
+            ProcessingResult res = step->process({currentCurve.data()}, normParams, error);
 
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("normalized")) {
                 stage.stageName = StageName::Normalize;
@@ -570,6 +572,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
+                currentCurve = stage.curve;
             }
         }
     }
@@ -582,7 +585,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             IProcessingStep* step = m_registeredSteps.value(methodId);
             QVariantMap smoothParams;
             smoothParams["fraction"] = params.loessSpan;
-            ProcessingResult res = step->process({rawCurve.data()}, smoothParams, error);
+            ProcessingResult res = step->process({currentCurve.data()}, smoothParams, error);
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
                 stage.stageName = StageName::Smooth;
                 stage.curve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
@@ -591,6 +594,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.isSegmented = false;
                 stage.numSegments = 1;
                 sampleData.stages.append(stage);
+                currentCurve = stage.curve;
             } else {
                 WARNING_LOG << "平滑阶段无结果：未返回 smoothed 曲线";
             }
@@ -613,7 +617,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 derivParams["derivative_order"] = 1;
             }
 
-            ProcessingResult res = step->process({rawCurve.data()}, derivParams, error);
+            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
 
             if (res.namedCurves.contains("derivative1")) {
                 stage.stageName = StageName::Derivative;

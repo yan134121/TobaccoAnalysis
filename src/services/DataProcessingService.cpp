@@ -492,6 +492,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     sampleData.stages.append(stage);
 
     QSharedPointer<Curve> rawCurve = stage.curve;
+    QSharedPointer<Curve> currentCurve = rawCurve;
 
     // --- 阶段1.5: 坏点修复 ---
     if (params.outlierRemovalEnabled && m_registeredSteps.contains("bad_point_repair")) {

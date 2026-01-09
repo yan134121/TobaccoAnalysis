@@ -969,15 +969,47 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
 void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
 {
     // 1. 打开文件选择对话框
-    QString filePath = QFileDialog::getOpenFileName(this, tr("选择小热重数据文件"), 
-                                                   QDir::homePath(), 
+    QString filePath = QFileDialog::getOpenFileName(this, tr("选择小热重数据文件"),
+                                                   QDir::homePath(),
                                                    tr("Excel文件 (*.xlsx)"));
     if (filePath.isEmpty()) {
         emit statusMessage(tr("未选择文件，操作已取消。"), 3000);
         return;
     }
 
-    // 2. 创建输入对话框获取批次代码和检测日期（烟牌号固定为“小热重”）
+    // 2. 创建输入对话框获取温度列与DTG列
+    QDialog columnDialog(this);
+    columnDialog.setWindowTitle(tr("指定小热重数据列"));
+
+    QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
+    QFormLayout* columnFormLayout = new QFormLayout();
+
+    QSpinBox temperatureColumnSpinBox;
+    temperatureColumnSpinBox.setRange(1, 1000);
+    temperatureColumnSpinBox.setValue(1);
+    columnFormLayout->addRow(tr("温度列(从1开始):"), &temperatureColumnSpinBox);
+
+    QSpinBox dtgColumnSpinBox;
+    dtgColumnSpinBox.setRange(1, 1000);
+    dtgColumnSpinBox.setValue(3);
+    columnFormLayout->addRow(tr("DTG列(从1开始):"), &dtgColumnSpinBox);
+
+    columnLayout->addLayout(columnFormLayout);
+
+    QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
+    connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
+    columnLayout->addWidget(columnButtonBox);
+
+    if (columnDialog.exec() != QDialog::Accepted) {
+        emit statusMessage(tr("用户取消了操作。"), 3000);
+        return;
+    }
+
+    int temperatureColumn = temperatureColumnSpinBox.value();
+    int dtgColumn = dtgColumnSpinBox.value();
+
+    // 3. 创建输入对话框获取批次代码和检测日期（烟牌号固定为“小热重”）
     QDialog inputDialog(this);
     inputDialog.setWindowTitle(tr("输入小热重样本信息"));
     
@@ -1012,19 +1044,19 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
         return;
     }
     
-    // 3. 获取用户输入的信息（烟牌号统一设为“小热重”）
+    // 4. 获取用户输入的信息（烟牌号统一设为“小热重”）
     QString projectName = QStringLiteral("小热重");
     QString batchCode = batchCodeEdit.text();
     QDate detectDate = detectDateEdit.date();
     int parallelNo = parallelNoSpinBox.value();
     
-    // 4. 如果已经有一个导入进程在运行，先停止它
+    // 5. 如果已经有一个导入进程在运行，先停止它
     if (m_tgSmallDataImportWorker && m_tgSmallDataImportWorker->isRunning()) {
         m_tgSmallDataImportWorker->stop();
         m_tgSmallDataImportWorker->wait();
     }
     
-    // 5. 创建进度对话框（非模态，不阻塞界面其他操作）
+    // 6. 创建进度对话框（非模态，不阻塞界面其他操作）
     if (!m_importProgressDialog) {
         m_importProgressDialog = new QProgressDialog(this);
         m_importProgressDialog->setWindowModality(Qt::NonModal); // 设置为非模态
@@ -1040,7 +1072,7 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
     m_importProgressDialog->setRange(0, 100);
     m_importProgressDialog->show();
     
-    // 6. 创建工作线程
+    // 7. 创建工作线程
     if (!m_tgSmallDataImportWorker) {
         m_tgSmallDataImportWorker = new TgSmallDataImportWorker(this);
         
@@ -1080,9 +1112,9 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
                         QString detailedMsg = tr("导入失败：未从Excel文件中提取到有效数据。\n\n可能的原因：\n"
                                               "1. Excel文件格式不正确\n"
                                               "2. 工作表名称不包含有效的样本编号\n"
-                                              "3. 数据列不在预期位置（温度应在第1列，重量应在第3列）\n"
+                                              "3. 温度列或DTG列设置错误\n"
                                               "4. 数据不是有效的数字格式\n\n"
-                                              "请检查Excel文件格式并重试。");
+                                              "请检查Excel文件与列设置后重试。");
                         QMessageBox::warning(this, tr("导入错误"), detailedMsg);
                         emit statusMessage(tr("导入失败：未从Excel文件中提取到有效数据"), 5000);
                     }
@@ -1104,10 +1136,10 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
                 m_tgSmallDataImportWorker, &TgSmallDataImportWorker::stop);
     }
     
-    // 7. 设置工作线程参数
-    m_tgSmallDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo, m_appInitializer);
+    // 8. 设置工作线程参数
+    m_tgSmallDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo, temperatureColumn, dtgColumn, m_appInitializer);
     
-    // 8. 启动工作线程
+    // 9. 启动工作线程
     m_tgSmallDataImportWorker->start();
     
     emit statusMessage(tr("正在后台导入小热重数据..."), 3000);

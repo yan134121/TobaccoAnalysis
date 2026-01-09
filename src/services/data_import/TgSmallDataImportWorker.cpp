@@ -1,4 +1,3 @@
-
 #include "third_party/QXlsx/header/xlsxdocument.h"
 
 #include "services/data_import/TgSmallDataImportWorker.h"
@@ -18,6 +17,7 @@
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QApplication>
+#include <QFileInfo>
 
 
 
@@ -44,6 +44,8 @@ void TgSmallDataImportWorker::setParameters(const QString& filePath,
                                            const QString& batchCode, 
                                            const QDate& detectDate,
                                            int parallelNo,
+                                           int temperatureColumn,
+                                           int dtgColumn,
                                            AppInitializer* appInitializer)
 {
     QMutexLocker locker(&m_mutex);
@@ -52,6 +54,8 @@ void TgSmallDataImportWorker::setParameters(const QString& filePath,
     m_batchCode = batchCode;
     m_detectDate = detectDate;
     m_parallelNo = parallelNo;
+    m_temperatureColumn = temperatureColumn;
+    m_dtgColumn = dtgColumn;
     m_appInitializer = appInitializer;
     m_stopped = false;
 }
@@ -284,6 +288,8 @@ void TgSmallDataImportWorker::run()
     QString projectName = m_projectName;
     QString batchCode = m_batchCode;
     int parallelNo = m_parallelNo;
+    int temperatureColumn = m_temperatureColumn;
+    int dtgColumn = m_dtgColumn;
     AppInitializer* appInitializer = m_appInitializer;
     locker.unlock();
     
@@ -297,29 +303,31 @@ void TgSmallDataImportWorker::run()
         return;
     }
     
-    // 打开Excel文件并读取所有sheet
+    if (temperatureColumn <= 0 || dtgColumn <= 0) {
+        emit importError("温度列或DTG列设置无效，请设置为大于0的列号");
+        return;
+    }
+
     emit progressMessage("正在打开Excel文件...");
     QXlsx::Document xlsx(filePath);
     if (!xlsx.load()) {
         emit importError("无法打开Excel文件，请检查文件格式是否正确");
         return;
     }
-    
+
     QStringList sheetNames = xlsx.sheetNames();
     if (sheetNames.isEmpty()) {
         emit importError("Excel文件中没有找到任何工作表");
         return;
     }
-    
+
     emit progressMessage("开始导入数据...");
     emit progressChanged(0, sheetNames.size());
-    
-    // 处理每个sheet
+
     int successCount = 0;
     int totalDataCount = 0;
-    
+
     for (int i = 0; i < sheetNames.size(); i++) {
-        // 检查是否被要求停止
         {
             QMutexLocker locker(&m_mutex);
             if (m_stopped) {
@@ -327,51 +335,33 @@ void TgSmallDataImportWorker::run()
                 return;
             }
         }
-        
+
         QString sheetName = sheetNames[i];
         emit progressMessage("正在处理工作表: " + sheetName);
         emit progressChanged(i, sheetNames.size());
-        
+
         xlsx.selectSheet(sheetName);
-        
-        // 从sheet名称中提取四位数字作为short_code
+
         QString shortCode = extractShortCodeFromSheetName(sheetName);
-        
-        // 创建样本
-        int sampleId = -1;
+
         SingleTobaccoSampleData sampleData;
         sampleData.setProjectName(projectName);
         sampleData.setBatchCode(batchCode);
         sampleData.setShortCode(shortCode);
         sampleData.setParallelNo(parallelNo);
-        
-        // 获取样本ID
-        sampleId = createOrGetSample(sampleData);
+
+        int sampleId = createOrGetSample(sampleData);
         if (sampleId <= 0) {
             emit progressMessage("警告: 无法创建或获取有效的样本ID，跳过工作表: " + sheetName);
             continue;
         }
-        
-        // 确认样本ID有效
-        DEBUG_LOG << "使用样本ID:" << sampleId << "处理工作表:" << sheetName;
-        
-        // 读取sheet中的数据
+
         QList<TgSmallData> dataList;
-        int row = 1; // 从第二行开始，第一行通常是标题
-        int maxEmptyRows = 5; // 允许最多连续5个空行
+        int row = 2;
+        int maxEmptyRows = 5;
         int emptyRowCount = 0;
-        
-        // 检查Excel文件结构
-        for (int col = 1; col <= 5; col++) {
-            std::shared_ptr<QXlsx::Cell> headerCell = xlsx.cellAt(1, col);
-            if (headerCell) {
-                DEBUG_LOG << "列" << col << "的标题是:" << headerCell->value().toString();
-            }
-        }
-        
-        // 从第2行开始读取数据
-        while (emptyRowCount < maxEmptyRows && row < 1000) { // 设置最大行数限制，避免无限循环
-            // 检查是否被要求停止
+
+        while (emptyRowCount < maxEmptyRows && row < 1000) {
             {
                 QMutexLocker locker(&m_mutex);
                 if (m_stopped) {
@@ -379,54 +369,46 @@ void TgSmallDataImportWorker::run()
                     return;
                 }
             }
-            
-            // 修改: 使用shared_ptr而不是原始指针
-            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, 1); // 第一列
-            std::shared_ptr<QXlsx::Cell> cellWeight = xlsx.cellAt(row, 3); // 第三列
-            
-            // 检查单元格是否为空
-            if (!cellTemp || !cellWeight || cellTemp->value().isNull() || cellWeight->value().isNull()) {
+
+            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, temperatureColumn);
+            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
+
+            if (!cellTemp || !cellDtg || cellTemp->value().isNull() || cellDtg->value().isNull()) {
                 emptyRowCount++;
                 row++;
                 continue;
             }
-            
-            // 重置空行计数
+
             emptyRowCount = 0;
-            
+
             bool tempOk = false;
-            bool DtgValueOK = false;
+            bool dtgOk = false;
             double temperature = cellTemp->value().toDouble(&tempOk);
-            double DtgValue = cellWeight->value().toDouble(&DtgValueOK);
-            
-            if (tempOk && DtgValueOK) {
+            double dtgValue = cellDtg->value().toDouble(&dtgOk);
+
+            if (tempOk && dtgOk) {
                 TgSmallData data;
                 data.setSampleId(sampleId);
-                data.setSerialNo(row - 1); // 调整序列号，从0开始
+                data.setSerialNo(dataList.size());
                 data.setTemperature(temperature);
                 data.setWeight(0.0);
-                data.setTgValue(0.0); // 设置热重值为重量
-                data.setDtgValue(DtgValue); // 默认微分值为0
+                data.setTgValue(0.0);
+                data.setDtgValue(dtgValue);
                 data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
-                
+
                 dataList.append(data);
             }
-            
+
             row++;
         }
-        
+
         emit progressMessage("工作表 " + sheetName + " 共读取了 " + QString::number(dataList.size()) + " 条数据");
-        
-        // 保存数据
+
         if (!dataList.isEmpty()) {
-            // 使用线程独立的DAO实例
             if (m_tgSmallDataDao) {
-                // 删除该样本的旧数据
                 m_tgSmallDataDao->removeBySampleId(sampleId);
-                
-                // 保存当前sheet的数据
+
                 bool saveResult = m_tgSmallDataDao->insertBatch(dataList);
-                
                 if (saveResult) {
                     totalDataCount += dataList.size();
                     successCount++;
@@ -438,7 +420,7 @@ void TgSmallDataImportWorker::run()
             }
         }
     }
-    
+
     emit progressChanged(sheetNames.size(), sheetNames.size());
     emit importFinished(successCount, totalDataCount);
 }

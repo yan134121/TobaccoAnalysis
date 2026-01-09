@@ -2289,7 +2289,7 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_chartView3) {
             m_chartView3->clearGraphs();
-            m_chartView3->setLabels(tr(""), tr("热重微分值"));
+            m_chartView3->setLabels(tr(""), tr("重量"));
             m_chartView3->setPlotTitle("裁剪数据");
         }
 
@@ -2316,7 +2316,7 @@ void TgSmallDataProcessDialog::updatePlot()
         colorIndex = 0;
         if (m_chartView4) {
             m_chartView4->clearGraphs();
-            m_chartView4->setLabels(tr(""), tr("热重微分值"));
+            m_chartView4->setLabels(tr(""), tr("重量"));
             m_chartView4->setPlotTitle("归一化数据");
         }
 
@@ -2343,7 +2343,7 @@ void TgSmallDataProcessDialog::updatePlot()
         colorIndex = 0;
         if (m_chartView5) {
             m_chartView5->clearGraphs();
-            m_chartView5->setLabels(tr(""), tr("热重微分值"));
+            m_chartView5->setLabels(tr(""), tr("重量"));
             m_chartView5->setPlotTitle("平滑数据");
         }
 
@@ -2370,7 +2370,7 @@ void TgSmallDataProcessDialog::updatePlot()
         colorIndex = 0;
         if (m_chartView6) {
             m_chartView6->clearGraphs();
-            m_chartView6->setLabels(tr(""), tr("热重微分值"));
+            m_chartView6->setLabels(tr(""), tr("重量"));
             m_chartView6->setPlotTitle("微分数据");
         }
 

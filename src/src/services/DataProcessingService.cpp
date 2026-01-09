@@ -150,7 +150,8 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
 
     // --- 2. 流水线处理 ---
     // 【修正】接力棒现在是智能指针，保证所有权清晰
-    QSharedPointer<Curve> currentCurve = stage.curve;
+    QSharedPointer<Curve> rawCurve = stage.curve;
+    QSharedPointer<Curve> currentCurve = rawCurve;
 
     // --- 阶段1.5: 坏点修复 (对齐 Copy_of_V2.2) ---
     // 在裁剪和归一化之前进行坏点修复，以避免异常值影响后续处理
@@ -231,10 +232,10 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
 
                 // currentCurve = results.cleaned;
                 sampleData.stages.append(stage);
+                currentCurve = stage.curve;
 
                 // 【关键】更新接力棒：后续归一化/平滑/微分均应基于裁剪后的曲线
                 // 中文说明：如果不在此更新，后续阶段会继续沿用原始曲线，导致 X 轴范围回退到原始数据范围。
-                currentCurve = stage.curve;
             }
         }
     }
@@ -278,9 +279,9 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
+                currentCurve = stage.curve;
 
                 // 【关键】更新接力棒用于后续阶段
-                currentCurve = stage.curve;
             }
         }
     }
@@ -335,7 +336,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
             }
             
             // 注意：微分的输入，通常是平滑后的数据 (currentCurve)
-            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, derivParams, error);
 
             if (res.namedCurves.contains("derivative1")) {
                 //  results.derivative = QSharedPointer<Curve>(res.namedCurves.value("derivative1").first());
@@ -348,6 +349,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
+                currentCurve = stage.curve;
 
             }
         }
@@ -494,7 +496,8 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
 
     // --- 流水线处理 ---
-    QSharedPointer<Curve> currentCurve = stage.curve;
+    QSharedPointer<Curve> rawCurve = stage.curve;
+    QSharedPointer<Curve> currentCurve = rawCurve;
 
     // --- 阶段2: 裁剪 ---
     if (params.clippingEnabled) {

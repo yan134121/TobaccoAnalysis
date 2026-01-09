@@ -143,7 +143,7 @@ QVector<QPointF> SampleDAO::fetchSmallRawWeightData(int sampleId, QString &error
 {
     QVector<QPointF> data;
     QSqlQuery query(DatabaseManager::instance().database());
-    QString queryString = "SELECT serial_no, weight FROM tg_small_data WHERE sample_id = :sample_id ORDER BY serial_no";
+    QString queryString = "SELECT serial_no, tg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY serial_no";
 
     query.prepare(queryString);
     query.bindValue(":sample_id", sampleId);

@@ -521,7 +521,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             stage.numSegments = 1;
 
             sampleData.stages.append(stage);
-            currentCurve = stage.curve;
         }
     }
 
@@ -544,7 +543,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             }
         }
     }
@@ -572,7 +570,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             }
         }
     }
@@ -594,7 +591,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.isSegmented = false;
                 stage.numSegments = 1;
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             } else {
                 WARNING_LOG << "平滑阶段无结果：未返回 smoothed 曲线";
             }
@@ -617,7 +613,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 derivParams["derivative_order"] = 1;
             }
 
-            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, derivParams, error);
 
             if (res.namedCurves.contains("derivative1")) {
                 stage.stageName = StageName::Derivative;

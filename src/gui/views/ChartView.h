@@ -42,6 +42,7 @@ public:
     void replot();
     // 新增：添加散点集合（用于显示坏点）
     void addScatterPoints(const QVector<double>& x, const QVector<double>& y, const QString& name, const QColor& color = Qt::red, int pointSize = 6);
+    void resetAxisRangeToData();
 
     // 【关键】在这里定义枚举类型（旧的工具模式，仍保留以兼容）
     enum ToolMode { Select, Pan, ZoomRect };

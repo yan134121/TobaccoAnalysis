@@ -7,6 +7,7 @@
 #include <QStatusBar>
 #include <QDateTime>
 #include <QCoreApplication>
+#include <QtGlobal>
 #include <QtConcurrent>
 #include <QTimer>
 
@@ -2045,6 +2046,34 @@ void TgSmallDataProcessDialog::onParametersApplied(const ProcessingParameters &n
     m_currentParams = newParams;
 
     DEBUG_LOG << "TgSmallDataProcessDialog::onParametersApplied - Current parameters:" << m_currentParams.toString();
+
+    if (m_currentParams.clippingEnabled
+        && qFuzzyCompare(m_currentParams.clipMinX, 400.0)
+        && qFuzzyCompare(m_currentParams.clipMaxX, 800.0)) {
+        double maxSerialNo = 0.0;
+        bool hasSerialNo = false;
+        const QList<int> sampleIds = m_selectedSamples.keys();
+        for (int sampleId : sampleIds) {
+            QString error;
+            const QVector<QPointF> points = m_sampleDao.fetchSmallRawTgData(sampleId, error);
+            if (!error.isEmpty()) {
+                DEBUG_LOG << "获取小热重样本序号范围失败:" << sampleId << error;
+            }
+            for (const auto& point : points) {
+                if (!hasSerialNo || point.x() > maxSerialNo) {
+                    maxSerialNo = point.x();
+                    hasSerialNo = true;
+                }
+            }
+        }
+        if (hasSerialNo) {
+            m_currentParams.clipMinX = 0.0;
+            m_currentParams.clipMaxX = maxSerialNo;
+            if (m_paramDialog) {
+                m_paramDialog->setParameters(m_currentParams);
+            }
+        }
+    }
 
     // 2. 触发重新计算和绘图的流程
     recalculateAndUpdatePlot();

@@ -150,7 +150,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
 
     // --- 2. 流水线处理 ---
     // 【修正】接力棒现在是智能指针，保证所有权清晰
-    QSharedPointer<Curve> currentCurve = stage.curve;
+    QSharedPointer<Curve> rawCurve = stage.curve;
 
     // --- 阶段1.5: 坏点修复 (对齐 Copy_of_V2.2) ---
     // 在裁剪和归一化之前进行坏点修复，以避免异常值影响后续处理
@@ -212,7 +212,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
             // DEBUG_LOG << "Clipping parameters:" << clipParams;
 
             // 【修正】使用 -> 操作符，并通过 .data() 获取裸指针传递
-            ProcessingResult res = step->process({currentCurve.data()}, clipParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, clipParams, error);
 
             // DEBUG_LOG << "Clipping result:" ;
 
@@ -234,7 +234,6 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
 
                 // 【关键】更新接力棒：后续归一化/平滑/微分均应基于裁剪后的曲线
                 // 中文说明：如果不在此更新，后续阶段会继续沿用原始曲线，导致 X 轴范围回退到原始数据范围。
-                currentCurve = stage.curve;
             }
         }
     }
@@ -264,7 +263,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
             // normParams["rangeMax"] = params.normalizationRangeMax;
 
             // 【修正】使用 -> 操作符，并通过 .data() 获取裸指针传递
-            ProcessingResult res = step->process({currentCurve.data()}, normParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, normParams, error);
 
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("normalized")) {
                 // 接管返回的裸指针，并更新接力棒
@@ -280,7 +279,6 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
                 sampleData.stages.append(stage);
 
                 // 【关键】更新接力棒用于后续阶段
-                currentCurve = stage.curve;
             }
         }
     }
@@ -298,7 +296,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
             QVariantMap smoothParams;
             // Loess 平滑使用参数 fraction（窗口比例），若未配置则使用算法默认参数
             smoothParams["fraction"] = params.loessSpan;
-            ProcessingResult res = step->process({currentCurve.data()}, smoothParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, smoothParams, error);
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
                 stage.stageName = StageName::Smooth;
                 stage.curve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
@@ -307,7 +305,6 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
                 stage.isSegmented = false;
                 stage.numSegments = 1;
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             } else {
                 WARNING_LOG << "平滑阶段无结果：未返回 smoothed 曲线";
             }
@@ -335,7 +332,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
             }
             
             // 注意：微分的输入，通常是平滑后的数据 (currentCurve)
-            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, derivParams, error);
 
             if (res.namedCurves.contains("derivative1")) {
                 //  results.derivative = QSharedPointer<Curve>(res.namedCurves.value("derivative1").first());
@@ -494,7 +491,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
 
     // --- 流水线处理 ---
-    QSharedPointer<Curve> currentCurve = stage.curve;
+    QSharedPointer<Curve> rawCurve = stage.curve;
 
     // --- 阶段2: 裁剪 ---
     if (params.clippingEnabled) {
@@ -504,7 +501,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             clipParams["min_x"] = params.clipMinX;
             clipParams["max_x"] = params.clipMaxX;
 
-            ProcessingResult res = step->process({currentCurve.data()}, clipParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, clipParams, error);
 
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("clipped")) {
                 stage.stageName = StageName::Clip;
@@ -515,7 +512,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             }
         }
     }
@@ -531,7 +527,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             normParams["rangeMin"] = 0.0;
             normParams["rangeMax"] = 100.0;
 
-            ProcessingResult res = step->process({currentCurve.data()}, normParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, normParams, error);
 
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("normalized")) {
                 stage.stageName = StageName::Normalize;
@@ -542,7 +538,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.numSegments = 1;
 
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             }
         }
     }
@@ -555,7 +550,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             IProcessingStep* step = m_registeredSteps.value(methodId);
             QVariantMap smoothParams;
             smoothParams["fraction"] = params.loessSpan;
-            ProcessingResult res = step->process({currentCurve.data()}, smoothParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, smoothParams, error);
             if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
                 stage.stageName = StageName::Smooth;
                 stage.curve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
@@ -564,7 +559,6 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 stage.isSegmented = false;
                 stage.numSegments = 1;
                 sampleData.stages.append(stage);
-                currentCurve = stage.curve;
             } else {
                 WARNING_LOG << "平滑阶段无结果：未返回 smoothed 曲线";
             }
@@ -587,7 +581,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
                 derivParams["derivative_order"] = 1;
             }
 
-            ProcessingResult res = step->process({currentCurve.data()}, derivParams, error);
+            ProcessingResult res = step->process({rawCurve.data()}, derivParams, error);
 
             if (res.namedCurves.contains("derivative1")) {
                 stage.stageName = StageName::Derivative;

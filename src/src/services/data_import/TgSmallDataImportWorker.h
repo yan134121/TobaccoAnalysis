@@ -43,6 +43,8 @@ public:
                       const QString& batchCode, 
                       const QDate& detectDate,
                       int parallelNo,
+                      int temperatureColumn,
+                      int dtgColumn,
                       AppInitializer* appInitializer);
     void stop();
 
@@ -61,6 +63,8 @@ private:
     QString m_batchCode;
     QDate m_detectDate;
     int m_parallelNo;
+    int m_temperatureColumn = 1;
+    int m_dtgColumn = 3;
     AppInitializer* m_appInitializer;
     bool m_stopped;
     QMutex m_mutex;

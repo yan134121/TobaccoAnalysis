@@ -272,17 +272,35 @@ void TgSmallRawDataImportWorker::run()
         }
 
         QList<TgSmallData> dataList;
-        int row = 1;
-        while (true) {
-            QVariant tempVar = xlsx.read(row, m_temperatureColumn);
-            QVariant dtgVar = xlsx.read(row, m_dtgColumn);
-            if (tempVar.isNull() && dtgVar.isNull()) {
-                break;
+        int row = 2;
+        int maxEmptyRows = 5;
+        int emptyRowCount = 0;
+
+        while (emptyRowCount < maxEmptyRows && row < 1000) {
+            {
+                QMutexLocker locker(&m_mutex);
+                if (m_stopped) {
+                    emit progressMessage(tr("导入已取消"));
+                    closeThreadDatabase();
+                    return;
+                }
             }
 
-            bool ok1, ok2;
-            double temperature = tempVar.toDouble(&ok1);
-            double dtgValue = dtgVar.toDouble(&ok2);
+            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, m_temperatureColumn);
+            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, m_dtgColumn);
+
+            if (!cellTemp || !cellDtg || cellTemp->value().isNull() || cellDtg->value().isNull()) {
+                emptyRowCount++;
+                row++;
+                continue;
+            }
+
+            emptyRowCount = 0;
+
+            bool ok1 = false;
+            bool ok2 = false;
+            double temperature = cellTemp->value().toDouble(&ok1);
+            double dtgValue = cellDtg->value().toDouble(&ok2);
             if (!ok1 || !ok2) {
                 row++;
                 continue;
@@ -290,10 +308,12 @@ void TgSmallRawDataImportWorker::run()
 
             TgSmallData data;
             data.setSampleId(sampleId);
-            data.setSerialNo(row);
+            data.setSerialNo(dataList.size());
             data.setTemperature(temperature);
+            data.setWeight(0.0);
+            data.setTgValue(0.0);
             data.setDtgValue(dtgValue);
-            data.setSourceName(QFileInfo(m_filePath).fileName());
+            data.setSourceName(QFileInfo(m_filePath).fileName() + ":" + sheetName);
             dataList.append(data);
             row++;
         }
@@ -303,6 +323,7 @@ void TgSmallRawDataImportWorker::run()
             continue;
         }
 
+        m_tgSmallRawDataDao->removeBySampleId(sampleId);
         if (!m_tgSmallRawDataDao->insertBatch(dataList)) {
             WARNING_LOG << "批量插入小热重（原始数据）失败:" << sheetName;
             continue;

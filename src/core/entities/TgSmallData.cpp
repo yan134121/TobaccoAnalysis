@@ -1,7 +1,7 @@
 #include "TgSmallData.h"
 
 TgSmallData::TgSmallData()
-    : m_id(-1), m_sampleId(-1), m_serialNo(0), m_temperature(0), m_tgValue(0.0), m_dtgValue(0.0)
+    : m_id(-1), m_sampleId(-1), m_serialNo(0), m_temperature(0), m_weight(0.0), m_tgValue(0.0), m_dtgValue(0.0)
 {
 }
 

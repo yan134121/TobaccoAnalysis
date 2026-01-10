@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
     SqlConfigLoader& sqlLoader = SqlConfigLoader::getInstance();
     
     // 构建配置文件路径
-    QString sql_configPath = QDir::currentPath() + "/config/sql_config.json";
+    QString sql_configPath = QCoreApplication::applicationDirPath() + "/config/sql_config.json";
     
     // 检查配置文件是否存在
     if (!QFile::exists(sql_configPath)) {

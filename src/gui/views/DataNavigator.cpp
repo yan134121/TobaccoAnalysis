@@ -1056,15 +1056,22 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
                 });
             }
 
-            if (info.type == NavigatorNodeInfo::Sample) {
+            const QStringList deletableSampleTypes = {
+                QStringLiteral("大热重"),
+                QStringLiteral("小热重"),
+                QStringLiteral("小热重（原始数据）"),
+                QStringLiteral("色谱"),
+                QStringLiteral("工序大热重")
+            };
+
+            if (info.type == NavigatorNodeInfo::Sample && deletableSampleTypes.contains(info.dataType)) {
                 menu.addSeparator();
                 QAction* delSample = menu.addAction(tr("删除样本"));
                 connect(delSample, &QAction::triggered, this, [this, info, processBranch, item]() {
-                    QString tip = processBranch ? tr("将删除【工序数据源】下该样本及其工序大热重数据。")
-                                                : tr("将删除【原料数据源】下该样本及其大热重/小热重/色谱数据。");
+                    QString tip = tr("将删除【%1】下该样本的数据。").arg(info.dataType);
                     if (QMessageBox::question(this, tr("确认删除"), tip + tr("此操作不可撤销，是否继续？")) == QMessageBox::Yes) {
                         QString err;
-                        if (m_dao.deleteSampleCascade(info.id, processBranch, err)) {
+                        if (m_dao.deleteSampleDataByType(info.id, info.dataType, err)) {
                             // 刷新数据类型节点
                             QTreeWidgetItem* parent = item->parent();
                             if (parent) refreshNode(parent); else { if (processBranch) refreshProcessData(); else refreshDataSource(); }

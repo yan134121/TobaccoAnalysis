@@ -195,6 +195,9 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
     }
 
     SingleTobaccoSampleData newSample = sampleData;
+    QDateTime now = QDateTime::currentDateTime();
+    newSample.setCreatedAt(now);
+    newSample.setYear(now.date().year());
     newSample.setSampleName(QString("%1-%2-%3-%4").arg(
         sampleData.getProjectName(),
         sampleData.getBatchCode(),
@@ -213,7 +216,30 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
 
 void TgSmallRawDataImportWorker::run()
 {
+    QMutexLocker locker(&m_mutex);
+    QString filePath = m_filePath;
+    QString projectName = m_projectName;
+    QString batchCode = m_batchCode;
+    int parallelNo = m_parallelNo;
+    int temperatureColumn = m_temperatureColumn;
+    int dtgColumn = m_dtgColumn;
+    QDate detectDate = m_detectDate;
+    AppInitializer* appInitializer = m_appInitializer;
+    locker.unlock();
+
     if (!initThreadDatabase()) {
+        return;
+    }
+
+    if (filePath.isEmpty() || !appInitializer) {
+        emit importError("参数无效，无法导入数据");
+        closeThreadDatabase();
+        return;
+    }
+
+    if (temperatureColumn <= 0 || dtgColumn <= 0) {
+        emit importError("温度列或DTG列设置无效，请设置为大于0的列号");
+        closeThreadDatabase();
         return;
     }
 
@@ -225,7 +251,12 @@ void TgSmallRawDataImportWorker::run()
 
     emit progressMessage(tr("正在读取Excel文件..."));
 
-    QXlsx::Document xlsx(m_filePath);
+    QXlsx::Document xlsx(filePath);
+    if (!xlsx.load()) {
+        emit importError("无法打开Excel文件，请检查文件格式是否正确");
+        closeThreadDatabase();
+        return;
+    }
     QStringList sheetNames = xlsx.sheetNames();
     if (sheetNames.isEmpty()) {
         emit importError("Excel文件不包含任何工作表");
@@ -259,11 +290,11 @@ void TgSmallRawDataImportWorker::run()
         }
 
         SingleTobaccoSampleData sampleData;
-        sampleData.setProjectName(m_projectName);
-        sampleData.setBatchCode(m_batchCode);
+        sampleData.setProjectName(projectName);
+        sampleData.setBatchCode(batchCode);
         sampleData.setShortCode(shortCode);
-        sampleData.setParallelNo(m_parallelNo);
-        sampleData.setDetectDate(m_detectDate);
+        sampleData.setParallelNo(parallelNo);
+        sampleData.setDetectDate(detectDate);
 
         int sampleId = createOrGetSample(sampleData);
         if (sampleId <= 0) {
@@ -286,8 +317,8 @@ void TgSmallRawDataImportWorker::run()
                 }
             }
 
-            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, m_temperatureColumn);
-            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, m_dtgColumn);
+            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, temperatureColumn);
+            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
 
             if (!cellTemp || !cellDtg || cellTemp->value().isNull() || cellDtg->value().isNull()) {
                 emptyRowCount++;
@@ -313,7 +344,7 @@ void TgSmallRawDataImportWorker::run()
             data.setWeight(0.0);
             data.setTgValue(0.0);
             data.setDtgValue(dtgValue);
-            data.setSourceName(QFileInfo(m_filePath).fileName() + ":" + sheetName);
+            data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
             dataList.append(data);
             row++;
         }

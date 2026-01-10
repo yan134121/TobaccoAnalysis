@@ -1238,4 +1238,38 @@ bool NavigatorDAO::deleteSampleDataByType(int sampleId, const QString& dataType,
     return true;
 }
 
+bool NavigatorDAO::deleteAllDataByType(const QString& dataType, QString& error)
+{
+    QSqlDatabase db = DatabaseManager::instance().database();
+    if (!db.isOpen()) { error = "数据库未连接"; return false; }
+    if (!db.transaction()) { error = db.lastError().text(); return false; }
+
+    QSqlQuery query(db);
+    QString delSql;
+
+    if (dataType == "大热重") {
+        delSql = "DELETE FROM tg_big_data";
+    } else if (dataType == "小热重") {
+        delSql = "DELETE FROM tg_small_data";
+    } else if (dataType == "小热重（原始数据）") {
+        delSql = "DELETE FROM tg_small_raw_data";
+    } else if (dataType == "色谱") {
+        delSql = "DELETE FROM chromatography_data";
+    } else if (dataType == "工序大热重") {
+        delSql = "DELETE FROM process_tg_big_data";
+    } else {
+        db.rollback();
+        error = "未知的数据类型";
+        return false;
+    }
+
+    if (!query.exec(delSql)) {
+        db.rollback();
+        error = query.lastError().text();
+        return false;
+    }
+
+    if (!db.commit()) { db.rollback(); error = db.lastError().text(); return false; }
+    return true;
+}
 

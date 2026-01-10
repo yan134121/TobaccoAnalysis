@@ -93,6 +93,7 @@ public:
     bool deleteBatchCascade(const QString& projectName, const QString& batchCode, bool processBranch, QString& error);
     bool deleteSampleCascade(int sampleId, bool processBranch, QString& error);
     bool deleteSampleDataByType(int sampleId, const QString& dataType, QString& error);
+    bool deleteAllDataByType(const QString& dataType, QString& error);
     
 
     int countSamplesForModel(int modelId, QString& error);

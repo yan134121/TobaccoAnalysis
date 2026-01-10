@@ -172,16 +172,55 @@ bool DatabaseConnector::ensureTablesExist(const QString &filePath) {
     }
 
     QTextStream in(&file);
-    // --- 关键修改：显式设置 QTextStream 的编码 ---
-    in.setCodec("UTF-8"); // <-- 添加这行
-    // --- 错误修改结束 ---
-    QString sql = in.readAll();
+    in.setCodec("UTF-8");
+    QStringList sqlLines;
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        QString trimmed = line.trimmed();
+        if (trimmed.isEmpty() || trimmed.startsWith("--") || trimmed.startsWith("#")) {
+            continue;
+        }
+        sqlLines.append(line);
+    }
     file.close();
 
-    QSqlQuery query(m_db); // 使用 DatabaseConnector 内部数据库
-    if (!query.exec(sql)) {
-        WARNING_LOG << "执行SQL文件失败:" << query.lastError().text();
-        return false;
+    QString sql = sqlLines.join('\n');
+    QString currentStatement;
+    bool inSingleQuote = false;
+    bool inDoubleQuote = false;
+
+    QSqlQuery query(m_db);
+    for (int i = 0; i < sql.size(); ++i) {
+        QChar ch = sql.at(i);
+        QChar prev = (i > 0) ? sql.at(i - 1) : QChar();
+
+        if (ch == '\'' && !inDoubleQuote && prev != '\\') {
+            inSingleQuote = !inSingleQuote;
+        } else if (ch == '"' && !inSingleQuote && prev != '\\') {
+            inDoubleQuote = !inDoubleQuote;
+        }
+
+        if (ch == ';' && !inSingleQuote && !inDoubleQuote) {
+            QString statement = currentStatement.trimmed();
+            if (!statement.isEmpty()) {
+                if (!query.exec(statement)) {
+                    WARNING_LOG << "执行SQL语句失败:" << query.lastError().text() << "SQL:" << statement;
+                    return false;
+                }
+            }
+            currentStatement.clear();
+            continue;
+        }
+
+        currentStatement.append(ch);
+    }
+
+    QString statement = currentStatement.trimmed();
+    if (!statement.isEmpty()) {
+        if (!query.exec(statement)) {
+            WARNING_LOG << "执行SQL语句失败:" << query.lastError().text() << "SQL:" << statement;
+            return false;
+        }
     }
 
     return true;

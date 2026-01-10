@@ -161,6 +161,7 @@ void DataNavigator::setupTree()
     
     m_bigTgRoot = new QTreeWidgetItem(this, {QStringLiteral("大热重")});
     m_smallTgRoot = new QTreeWidgetItem(this, {QStringLiteral("小热重")});
+    m_smallTgRawRoot = new QTreeWidgetItem(this, {QStringLiteral("小热重（原始数据）")});
     m_chromRoot = new QTreeWidgetItem(this, {QStringLiteral("色谱")});
     
     // 【新】工序数据源根节点重命名为"工序大热重"，作为该类数据的容器
@@ -172,6 +173,7 @@ void DataNavigator::setupTree()
     // m_chromRoot->setIcon(0, style()->standardIcon(QStyle::SP_DirHomeIcon));
     m_bigTgRoot->setIcon(0, style()->standardIcon(QStyle::SP_DirOpenIcon));
     m_smallTgRoot->setIcon(0, style()->standardIcon(QStyle::SP_DirOpenIcon));
+    m_smallTgRawRoot->setIcon(0, style()->standardIcon(QStyle::SP_DirOpenIcon));
     m_chromRoot->setIcon(0, style()->standardIcon(QStyle::SP_DirOpenIcon));
     m_processDataRoot->setIcon(0, style()->standardIcon(QStyle::SP_DirOpenIcon));
     
@@ -186,6 +188,7 @@ void DataNavigator::setupTree()
 
     initRootInfo(m_bigTgRoot, "大热重");
     initRootInfo(m_smallTgRoot, "小热重");
+    initRootInfo(m_smallTgRawRoot, "小热重（原始数据）");
     initRootInfo(m_chromRoot, "色谱");
 
     // 创建"打开的窗口"节点
@@ -195,6 +198,7 @@ void DataNavigator::setupTree()
     addTopLevelItem(m_workspaceRoot);
     addTopLevelItem(m_bigTgRoot);
     addTopLevelItem(m_smallTgRoot);
+    addTopLevelItem(m_smallTgRawRoot);
     addTopLevelItem(m_chromRoot);
     addTopLevelItem(m_processDataRoot);
     
@@ -218,6 +222,7 @@ void DataNavigator::refreshDataSource()
 
     resetRoot(m_bigTgRoot);
     resetRoot(m_smallTgRoot);
+    resetRoot(m_smallTgRawRoot);
     resetRoot(m_chromRoot);
     
     // 确保UI更新
@@ -308,7 +313,11 @@ void DataNavigator::setActiveView(QMdiSubWindow *window)
         if (windowClassName == "TgBigDataProcessDialog") {
             enableSampleCheckboxesByDataType(QStringLiteral("大热重"), true);
         } else if (windowClassName == "TgSmallDataProcessDialog") {
-            enableSampleCheckboxesByDataType(QStringLiteral("小热重"), true);
+            QString dataTypeName = window->widget()->property("dataTypeName").toString();
+            if (dataTypeName.isEmpty()) {
+                dataTypeName = QStringLiteral("小热重");
+            }
+            enableSampleCheckboxesByDataType(dataTypeName, true);
         } else if (windowClassName == "ChromatographDataProcessDialog") {
             enableSampleCheckboxesByDataType(QStringLiteral("色谱"), true);
         } else if (windowClassName == "ProcessTgBigDataProcessDialog") {
@@ -679,7 +688,7 @@ void DataNavigator::onItemExpanded(QTreeWidgetItem *item)
     switch (info.type) {
         case NavigatorNodeInfo::DataType:
             // 如果是大热重/小热重/色谱的根节点，加载 ShortCode
-            if (info.dataType == "大热重" || info.dataType == "小热重" || info.dataType == "色谱") {
+            if (info.dataType == "大热重" || info.dataType == "小热重" || info.dataType == "小热重（原始数据）" || info.dataType == "色谱") {
                 loadShortCodesForType(item, info.dataType);
             }
             break;

@@ -1011,6 +1011,28 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
             QTreeWidgetItem* root = getRootOf(item);
             bool processBranch = (root == m_processDataRoot);
 
+            const QSet<QTreeWidgetItem*> dataTypeRoots = {
+                m_bigTgRoot,
+                m_smallTgRoot,
+                m_smallTgRawRoot,
+                m_chromRoot
+            };
+
+            if (info.type == NavigatorNodeInfo::DataType && dataTypeRoots.contains(item)) {
+                QAction* deleteTypeAction = menu.addAction(tr("删除"));
+                connect(deleteTypeAction, &QAction::triggered, this, [this, info]() {
+                    QString tip = tr("将删除【%1】下所有数据。").arg(info.dataType);
+                    if (QMessageBox::question(this, tr("确认删除"), tip + tr("此操作不可撤销，是否继续？")) == QMessageBox::Yes) {
+                        QString err;
+                        if (m_dao.deleteAllDataByType(info.dataType, err)) {
+                            refreshDataSource();
+                        } else {
+                            QMessageBox::warning(this, tr("删除失败"), err);
+                        }
+                    }
+                });
+            }
+
             // 删除操作菜单
             if (info.type == NavigatorNodeInfo::Model) {
                 menu.addSeparator();

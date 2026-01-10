@@ -121,21 +121,25 @@ SampleDataFlexible DataProcessingService::runTgBigLikePipeline(DataType dataType
         return sampleData;
     }
 
-    // 对齐 V2.2.1_origin 的固定裁剪策略（索引起点=60，最大长度=341）
-    int fixedStartIndex = 60;            // MATLAB: fixedStartPoint=60
-    int fixedMaxLength  = 341;           // MATLAB: MaxLength=341
-    int n = rawPoints.size();
-    int startIdx = qMin(qMax(0, fixedStartIndex), n);
-    int maxLen   = qMin(fixedMaxLength, n - startIdx);
-    if (maxLen < 0) maxLen = 0;
-    QVector<QPointF> fixedSegment;
-    fixedSegment.reserve(maxLen);
-    for (int i = 0; i < maxLen; ++i) {
-        fixedSegment.append(rawPoints[startIdx + i]);
+    QVector<QPointF> workingPoints = rawPoints;
+    if (dataType == DataType::TG_BIG) {
+        // 对齐 V2.2.1_origin 的固定裁剪策略（索引起点=60，最大长度=341）
+        int fixedStartIndex = 60;            // MATLAB: fixedStartPoint=60
+        int fixedMaxLength  = 341;           // MATLAB: MaxLength=341
+        int n = rawPoints.size();
+        int startIdx = qMin(qMax(0, fixedStartIndex), n);
+        int maxLen   = qMin(fixedMaxLength, n - startIdx);
+        if (maxLen < 0) maxLen = 0;
+        QVector<QPointF> fixedSegment;
+        fixedSegment.reserve(maxLen);
+        for (int i = 0; i < maxLen; ++i) {
+            fixedSegment.append(rawPoints[startIdx + i]);
+        }
+        workingPoints = fixedSegment;
     }
 
     QVector<double> x, y;
-    for(const auto& p : fixedSegment) { x.append(p.x()); y.append(p.y()); }
+    for (const auto& p : workingPoints) { x.append(p.x()); y.append(p.y()); }
     stage.stageName = StageName::RawData;
 
     DEBUG_LOG << "CURVE前：" ;
@@ -211,8 +215,25 @@ SampleDataFlexible DataProcessingService::runTgBigLikePipeline(DataType dataType
             // DEBUG_LOG << "Clipping step registered";
             IProcessingStep* step = m_registeredSteps.value("clipping");
             QVariantMap clipParams;
-            clipParams["min_x"] = params.clipMinX_TgBig;
-            clipParams["max_x"] = params.clipMaxX_TgBig;
+            if (dataType == DataType::TG_SMALL_RAW && currentCurve) {
+                const QVector<QPointF> &curveData = currentCurve->data();
+                if (!curveData.isEmpty()) {
+                    double minX = curveData.first().x();
+                    double maxX = curveData.first().x();
+                    for (const auto &point : curveData) {
+                        minX = qMin(minX, point.x());
+                        maxX = qMax(maxX, point.x());
+                    }
+                    clipParams["min_x"] = minX;
+                    clipParams["max_x"] = maxX;
+                } else {
+                    clipParams["min_x"] = params.clipMinX_TgBig;
+                    clipParams["max_x"] = params.clipMaxX_TgBig;
+                }
+            } else {
+                clipParams["min_x"] = params.clipMinX_TgBig;
+                clipParams["max_x"] = params.clipMaxX_TgBig;
+            }
 
             // DEBUG_LOG << "Clipping parameters:" << clipParams;
 

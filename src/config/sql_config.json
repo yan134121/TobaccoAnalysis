@@ -53,6 +53,28 @@
         "description": "根据样品ID删除小热重数据"
       }
     },
+    "TgSmallRawDataDAO": {
+      "insert": {
+        "sql": "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "插入小热重（原始数据）记录"
+      },
+      "insert_batch": {
+        "sql": "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "批量插入小热重（原始数据）记录"
+      },
+      "select_by_sample_id": {
+        "sql": "SELECT * FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY id, temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重（原始数据）"
+      },
+      "delete_by_sample_id": {
+        "sql": "DELETE FROM tg_small_raw_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID删除小热重（原始数据）"
+      }
+    },
     "TgBigDataDAO": {
       "insert": {
         "sql": "INSERT INTO tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
@@ -248,6 +270,11 @@
         "parameters": ["sample_id"],
         "description": "根据样品ID查询小热重数据"
       },
+      "select_data_by_sample_id_small_raw": {
+        "sql": "SELECT temperature, dtg_value FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重（原始数据）"
+      },
       "select_data_by_sample_id_chrom": {
         "sql": "SELECT retention_time, response_value FROM chromatography_data WHERE sample_id = :sample_id ORDER BY retention_time",
         "parameters": ["sample_id"],
@@ -259,7 +286,7 @@
         "description": "根据样品ID查询处理后大热重数据"
       },
       "select_samples_with_data": {
-        "sql": "SELECT DISTINCT s.id AS sample_id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name, s.origin, s.grade FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_big_data tbd WHERE tbd.sample_id = s.id) OR EXISTS (SELECT 1 FROM tg_small_data tsd WHERE tsd.sample_id = s.id) OR EXISTS (SELECT 1 FROM chromatography_data cd WHERE cd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "sql": "SELECT DISTINCT s.id AS sample_id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name, s.origin, s.grade FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_big_data tbd WHERE tbd.sample_id = s.id) OR EXISTS (SELECT 1 FROM tg_small_data tsd WHERE tsd.sample_id = s.id) OR EXISTS (SELECT 1 FROM tg_small_raw_data tsrd WHERE tsrd.sample_id = s.id) OR EXISTS (SELECT 1 FROM chromatography_data cd WHERE cd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
         "parameters": [],
         "description": "查询有数据的样品"
       },
@@ -267,6 +294,11 @@
         "sql": "SELECT DISTINCT s.id, s.batch_id, s.project_name, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s INNER JOIN {data_table} d ON s.id = d.sample_id ORDER BY s.batch_id, s.short_code, s.parallel_no",
         "parameters": ["data_table"],
         "description": "根据数据类型查询有数据的样品"
+      },
+      "select_samples_by_data_type_small_raw": {
+        "sql": "SELECT DISTINCT s.id, s.batch_id, s.project_name, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s INNER JOIN tg_small_raw_data d ON s.id = d.sample_id ORDER BY s.batch_id, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "根据数据类型查询有小热重（原始数据）的样品"
       },
       "select_sample_by_id": {
         "sql": "SELECT id, batch_id, project_name, short_code, parallel_no, sample_name, origin, grade, year, part, type, collect_date, detect_date FROM single_tobacco_sample WHERE id = :sample_id",
@@ -288,6 +320,11 @@
         "parameters": ["sample_id"],
         "description": "根据样品ID查询小热重图表数据"
       },
+      "fetch_chart_data_small_raw": {
+        "sql": "SELECT temperature, tg_value, dtg_value FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重（原始数据）图表数据"
+      },
       "fetch_chart_data_chrom": {
         "sql": "SELECT retention_time, response_value FROM chromatography_data WHERE sample_id = :sample_id ORDER BY retention_time",
         "parameters": ["sample_id"],
@@ -302,6 +339,11 @@
         "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_small_data tsd WHERE tsd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
         "parameters": [],
         "description": "查询有小热重数据的样品"
+      },
+      "get_samples_by_data_type_small_raw": {
+        "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM tg_small_raw_data tsrd WHERE tsrd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
+        "parameters": [],
+        "description": "查询有小热重（原始数据）的样品"
       },
       "get_samples_by_data_type_chrom": {
         "sql": "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id WHERE EXISTS (SELECT 1 FROM chromatography_data cd WHERE cd.sample_id = s.id) ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no",
@@ -323,6 +365,11 @@
         "sql": "SELECT COUNT(*) FROM tg_small_data WHERE sample_id = :sample_id",
         "parameters": ["sample_id"],
         "description": "统计指定样本的小热重数据点数"
+      },
+      "count_data_points_small_raw": {
+        "sql": "SELECT COUNT(*) FROM tg_small_raw_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "统计指定样本的小热重（原始数据）点数"
       },
       "count_data_points_chrom": {
         "sql": "SELECT COUNT(*) FROM chromatography_data WHERE sample_id = :sample_id",
@@ -406,6 +453,11 @@
         "parameters": ["batch_id", "short_code"],
         "description": "判断指定批次/短码是否存在小热重数据"
       },
+      "exists_tg_small_raw_by_batch_and_short_code": {
+        "sql": "SELECT COUNT(*) as count FROM tg_small_raw_data d JOIN single_tobacco_sample s ON d.sample_id = s.id WHERE s.batch_id = :batch_id AND s.short_code = :short_code",
+        "parameters": ["batch_id", "short_code"],
+        "description": "判断指定批次/短码是否存在小热重（原始数据）"
+      },
       "exists_chrom_by_batch_and_short_code": {
         "sql": "SELECT COUNT(*) as count FROM chromatography_data d JOIN single_tobacco_sample s ON d.sample_id = s.id WHERE s.batch_id = :batch_id AND s.short_code = :short_code",
         "parameters": ["batch_id", "short_code"],
@@ -450,6 +502,11 @@
         "sql": "DELETE FROM tg_small_data WHERE sample_id = :sid",
         "parameters": ["sid"],
         "description": "按样本ID删除小热重数据"
+      },
+      "delete_tg_small_raw_by_sample_id": {
+        "sql": "DELETE FROM tg_small_raw_data WHERE sample_id = :sid",
+        "parameters": ["sid"],
+        "description": "按样本ID删除小热重（原始数据）"
       },
       "delete_chrom_by_sample_id": {
         "sql": "DELETE FROM chromatography_data WHERE sample_id = :sid",

@@ -1186,4 +1186,56 @@ bool NavigatorDAO::deleteSampleCascade(int sampleId, bool processBranch, QString
     return true;
 }
 
+bool NavigatorDAO::deleteSampleDataByType(int sampleId, const QString& dataType, QString& error)
+{
+    QSqlDatabase db = DatabaseManager::instance().database();
+    if (!db.isOpen()) { error = "数据库未连接"; return false; }
+    if (!db.transaction()) { error = db.lastError().text(); return false; }
+
+    QSqlQuery query(db);
+    QString delSql;
+
+    if (dataType == "大热重") {
+        delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_big_by_sample_id").sql;
+        if (delSql.isEmpty()) {
+            delSql = "DELETE FROM tg_big_data WHERE sample_id = :sid";
+        }
+    } else if (dataType == "小热重") {
+        delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_small_by_sample_id").sql;
+        if (delSql.isEmpty()) {
+            delSql = "DELETE FROM tg_small_data WHERE sample_id = :sid";
+        }
+    } else if (dataType == "小热重（原始数据）") {
+        delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_small_raw_by_sample_id").sql;
+        if (delSql.isEmpty()) {
+            delSql = "DELETE FROM tg_small_raw_data WHERE sample_id = :sid";
+        }
+    } else if (dataType == "色谱") {
+        delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_chrom_by_sample_id").sql;
+        if (delSql.isEmpty()) {
+            delSql = "DELETE FROM chromatography_data WHERE sample_id = :sid";
+        }
+    } else if (dataType == "工序大热重") {
+        delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_process_tg_big_by_sample_id").sql;
+        if (delSql.isEmpty()) {
+            delSql = "DELETE FROM process_tg_big_data WHERE sample_id = :sid";
+        }
+    } else {
+        db.rollback();
+        error = "未知的数据类型";
+        return false;
+    }
+
+    query.prepare(delSql);
+    query.bindValue(":sid", sampleId);
+    if (!query.exec()) {
+        db.rollback();
+        error = query.lastError().text();
+        return false;
+    }
+
+    if (!db.commit()) { db.rollback(); error = db.lastError().text(); return false; }
+    return true;
+}
+
 

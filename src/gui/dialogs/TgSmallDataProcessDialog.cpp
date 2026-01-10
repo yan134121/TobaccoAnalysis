@@ -506,7 +506,9 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
         int colorIndex = 0;
         
         try {
-            m_chartView1->setPlotTitle("原始DTG数据");
+            m_chartView1->setPlotTitle(m_dataTypeName == QStringLiteral("小热重（原始数据）")
+                                           ? tr("原始数据")
+                                           : tr("原始DTG数据"));
         } catch (const std::exception& e) {
             DEBUG_LOG << "设置图表标题异常:" << e.what();
         } catch (...) {
@@ -875,12 +877,15 @@ void TgSmallDataProcessDialog::setupMiddlePanel()
     m_middleLayout = new QGridLayout(m_middlePanel);
     
     m_chartView1 = new ChartView();
-    // m_chartView2 = new ChartView();
-    // m_chartView3 = new ChartView();
-    // m_chartView4 = new ChartView();
-    // m_chartView5 = new ChartView();
-    if (!m_chartView1 
-        // || !m_chartView2 || !m_chartView3 || !m_chartView4 || !m_chartView5
+    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+        m_chartView2 = new ChartView();
+        m_chartView3 = new ChartView();
+        m_chartView4 = new ChartView();
+        m_chartView5 = new ChartView();
+    }
+    if (!m_chartView1
+        || (m_dataTypeName == QStringLiteral("小热重（原始数据）")
+            && (!m_chartView2 || !m_chartView3 || !m_chartView4 || !m_chartView5))
     ) {
         DEBUG_LOG << "TgSmallDataProcessDialog::setupMiddlePanel--VIEW - ERROR: Failed to create ChartView!";
     } else {
@@ -889,10 +894,12 @@ void TgSmallDataProcessDialog::setupMiddlePanel()
 
     // 将 ChartView 添加到网格中
     m_middleLayout->addWidget(m_chartView1, 0, 0);
-    // m_middleLayout->addWidget(m_chartView2, 0, 1);
-    // m_middleLayout->addWidget(m_chartView3, 1, 0);
-    // m_middleLayout->addWidget(m_chartView4, 1, 1);
-    // m_middleLayout->addWidget(m_chartView5, 2, 0); // 显示
+    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+        m_middleLayout->addWidget(m_chartView2, 0, 1);
+        m_middleLayout->addWidget(m_chartView3, 1, 0);
+        m_middleLayout->addWidget(m_chartView4, 1, 1);
+        m_middleLayout->addWidget(m_chartView5, 2, 0); // 显示
+    }
 
     // m_legendPanel = new QWidget();
     // m_legendLayout = new QVBoxLayout(m_legendPanel);
@@ -1096,6 +1103,10 @@ void TgSmallDataProcessDialog::onClearCurvesClicked()
 {
     // 仅清除绘图区域的曲线；不改变“被选中样本”，只将其设为不可见
     if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();
@@ -2131,6 +2142,10 @@ void TgSmallDataProcessDialog::onCalculationFinished()
 
     DEBUG_LOG << "BatchGroupData size:" << m_stageDataCache.size();
 
+    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+        updatePlot();
+    }
+
     // --- 2. 启用“计算差异度”按钮（至少两个样本组才能计算差异度） ---
     m_startComparisonButton->setEnabled(m_stageDataCache.size() >= 2);
 
@@ -2229,23 +2244,58 @@ void TgSmallDataProcessDialog::updatePlot()
 {
     try {
         DEBUG_LOG << "开始更新图表";
-        
-        // 检查图表视图是否初始化
-        if (!m_chartView1) {
-            DEBUG_LOG << "图表视图未初始化，无法更新图表";
-            return;
-        }
-        
-        // 调用drawSelectedSampleCurves方法重新绘制所有选中样本的曲线
-        try {
+        if (m_dataTypeName != QStringLiteral("小热重（原始数据）")) {
+            // 非小热重（原始数据）保持原有绘制逻辑
             drawSelectedSampleCurves();
             DEBUG_LOG << "已重新绘制所有选中样本的曲线";
-        } catch (const std::exception& e) {
-            DEBUG_LOG << "绘制选中样本曲线异常:" << e.what();
-        } catch (...) {
-            DEBUG_LOG << "绘制选中样本曲线未知异常";
+            return;
         }
-        
+
+        if (!m_chartView2 || !m_chartView3 || !m_chartView4 || !m_chartView5) {
+            DEBUG_LOG << "小热重（原始数据）图表视图未初始化，无法更新图表";
+            return;
+        }
+
+        if (m_stageDataCache.isEmpty()) {
+            DEBUG_LOG << "阶段数据为空，清空处理图表";
+            m_chartView2->clearGraphs();
+            m_chartView3->clearGraphs();
+            m_chartView4->clearGraphs();
+            m_chartView5->clearGraphs();
+            return;
+        }
+
+        auto updateStagePlot = [&](StageName stageName, ChartView* targetView, const QString& title) {
+            if (!targetView) return;
+            targetView->clearGraphs();
+            targetView->setLabels(tr("温度 (°C)"), tr("热重微分值 (DTG)"));
+            targetView->setPlotTitle(title);
+
+            int colorIndex = 0;
+            for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+                const SampleGroup &group = groupIt.value();
+                for (const auto &sample : group.sampleDatas) {
+                    for (const auto &stage : sample.stages) {
+                        if (stage.stageName == stageName && stage.curve) {
+                            QSharedPointer<Curve> curve = stage.curve;
+                            curve->setColor(ColorUtils::setCurveColor(colorIndex++));
+                            targetView->addCurve(curve);
+                        }
+                    }
+                }
+            }
+
+            targetView->setLegendVisible(false);
+            targetView->replot();
+        };
+
+        updateStagePlot(StageName::Clip, m_chartView2, tr("裁剪数据"));
+        updateStagePlot(StageName::Normalize, m_chartView3, tr("归一化数据"));
+        updateStagePlot(StageName::Smooth, m_chartView4, tr("平滑数据"));
+        updateStagePlot(StageName::Derivative, m_chartView5, tr("微分数据"));
+
+        updateLegendPanel();
+
         DEBUG_LOG << "图表更新完成";
     } catch (const std::exception& e) {
         DEBUG_LOG << "updatePlot方法异常:" << e.what();
@@ -2254,143 +2304,6 @@ void TgSmallDataProcessDialog::updatePlot()
     }
 
 
-
-    // // // --- 1. 更新【原始数据】图表 (m_chartView1) ---
-    // // m_chartView1->clearGraphs();
-    // // m_chartView1->setLabels(tr(""), tr("重量"));
-    // // // m_chartView1->setPlotTitle("原始数据");
-
-    // // for (int sampleId : m_selectedSamples.keys()) {
-    // //     if (m_stageDataCache.contains(sampleId) && m_stageDataCache[sampleId].original) {
-    // //         QSharedPointer<Curve> curve = m_stageDataCache[sampleId].original;
-    // //         curve->setColor(QColor::fromHsv((240 + sampleId * 50) % 360, 200, 220));
-    // //         curve->setName(m_selectedSamples.value(sampleId));
-    // //         m_chartView1->addCurve(curve);
-    // //     }
-    // // }
-    // // m_chartView1->replot();
-
-
-    // // --- 2. 更新【裁剪】图表 (m_chartView2) ---
-    // m_chartView2->clearGraphs();
-    // m_chartView2->setLabels(tr(""), tr("重量"));
-    // m_chartView2->setPlotTitle("裁剪数据");
-
-    // for (int sampleId : m_selectedSamples.keys()) {
-    //     DEBUG_LOG << "sampleId0000: " << sampleId;
-
-    //     // 【关键】从 m_stageDataCache.cleaned 获取数据
-    //     if (m_stageDataCache.contains(sampleId) && m_stageDataCache[sampleId].cleaned) {
-    //         QSharedPointer<Curve> curve = m_stageDataCache[sampleId].cleaned;
-
-    //         SampleIdentifier sid = sampleIdMap[sampleId]; // 直接取缓存
-    //         QString legendName = QString("%1-%2-%3-%4")
-    //                                 .arg(sid.projectName)
-    //                                 .arg(sid.batchCode)
-    //                                 .arg(sid.shortCode)
-    //                                 .arg(sid.parallelNo);
-
-    //         // curve->setName(legendName);
-            
-    //         // curve->setColor(QColor::fromHsv((240 + colorIndex * 50) % 360, 200, 220));
-    //         curve->setColor(ColorUtils::setCurveColor(colorIndex));
-    //         // curve->setName(m_selectedSamples.value(sampleId));
-    //         m_chartView2->addCurve(curve);
-    //         m_chartView2->setLegendVisible(false);
-    //         colorIndex++;
-    //     }
-    // }
-    // m_chartView2->replot();
-
-
-    // // --- 3. 更新【归一化】图表 (m_chartView3) ---
-    // m_chartView3->clearGraphs();
-    // m_chartView3->setLabels(tr(""), tr("归一化重量")); // Y轴标签可能不同
-    // m_chartView3->setPlotTitle("归一化数据");
-    // colorIndex = 0;
-
-    // for (int sampleId : m_selectedSamples.keys()) {
-    //     // 【关键】从 m_stageDataCache.normalized 获取数据
-    //     if (m_stageDataCache.contains(sampleId) && m_stageDataCache[sampleId].normalized) {
-    //         QSharedPointer<Curve> curve = m_stageDataCache[sampleId].normalized;
-    //         // curve->setColor(QColor::fromHsv((240 + colorIndex * 50) % 360, 200, 220));
-    //         curve->setColor(ColorUtils::setCurveColor(colorIndex));
-    //         // curve->setName(m_selectedSamples.value(sampleId));
-    //         SampleIdentifier sid = sampleIdMap[sampleId]; // 直接取缓存
-    //         QString legendName = QString("%1-%2-%3-%4")
-    //                                 .arg(sid.projectName)
-    //                                 .arg(sid.batchCode)
-    //                                 .arg(sid.shortCode)
-    //                                 .arg(sid.parallelNo);
-
-    //         // curve->setName(legendName);
-    //         m_chartView3->addCurve(curve);
-    //         m_chartView3->setLegendVisible(false);
-    //         colorIndex++;
-    //     }
-    // }
-    // m_chartView3->replot();
-
-
-    // // --- 4. 更新【平滑】图表 (m_chartView4) ---
-    // m_chartView4->clearGraphs();
-    // m_chartView4->setLabels(tr(""), tr("归一化重量")); 
-    // m_chartView4->setPlotTitle("平滑数据");
-    // colorIndex = 0;
-    
-    // for (int sampleId : m_selectedSamples.keys()) {
-    //     // 【关键】从 m_stageDataCache.smoothed 获取数据
-    //     if (m_stageDataCache.contains(sampleId) && m_stageDataCache[sampleId].smoothed) {
-    //         QSharedPointer<Curve> curve = m_stageDataCache[sampleId].smoothed;
-    //         // curve->setColor(QColor::fromHsv((240 + colorIndex * 50) % 360, 200, 220));
-    //         curve->setColor(ColorUtils::setCurveColor(colorIndex));
-    //         // curve->setName(m_selectedSamples.value(sampleId));
-    //         SampleIdentifier sid = sampleIdMap[sampleId]; // 直接取缓存
-    //         QString legendName = QString("%1-%2-%3-%4")
-    //                                 .arg(sid.projectName)
-    //                                 .arg(sid.batchCode)
-    //                                 .arg(sid.shortCode)
-    //                                 .arg(sid.parallelNo);
-
-    //         // curve->setName(legendName);
-    //         m_chartView4->setLegendVisible(false);
-    //         m_chartView4->addCurve(curve);
-    //         colorIndex++;
-    //     }
-    // }
-    // m_chartView4->replot();
-
-
-    // // --- 5. 更新【微分】图表 (m_chartView5) ---
-    // m_chartView5->clearGraphs();
-    // m_chartView5->setLabels(tr("序号"), tr("DTG值")); // Y轴标签可能不同
-    // m_chartView5->setPlotTitle("微分数据");
-    // colorIndex = 0;
-    
-    // for (int sampleId : m_selectedSamples.keys()) {
-    //     // 【关键】从 m_stageDataCache.derivative 获取数据
-    //     if (m_stageDataCache.contains(sampleId) && m_stageDataCache[sampleId].derivative) {
-    //         QSharedPointer<Curve> curve = m_stageDataCache[sampleId].derivative;
-    //         // curve->setColor(QColor::fromHsv((240 + colorIndex * 50) % 360, 200, 220));
-    //         curve->setColor(ColorUtils::setCurveColor(colorIndex));
-    //         // curve->setName(m_selectedSamples.value(sampleId));
-    //         SampleIdentifier sid = sampleIdMap[sampleId]; // 直接取缓存
-    //         QString legendName = QString("%1-%2-%3-%4")
-    //                                 .arg(sid.projectName)
-    //                                 .arg(sid.batchCode)
-    //                                 .arg(sid.shortCode)
-    //                                 .arg(sid.parallelNo);
-
-    //         // curve->setName(legendName);
-    //         m_chartView5->setLegendVisible(false);
-    //         // DEBUG_LOG << "00000Curve name:" << curve->name();
-    //         m_chartView5->addCurve(curve);
-    //         colorIndex++;
-    //     }
-    // }
-    // m_chartView5->replot();
-
-    // updateLegendPanel();
 }
 
 

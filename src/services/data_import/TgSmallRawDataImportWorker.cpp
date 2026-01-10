@@ -179,7 +179,7 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
             QString sampleName = QString("%1-%2-%3-%4").arg(
                 existingSample.getProjectName(),
                 existingSample.getBatchCode(),
-                existingSample.getShortCode(),
+                shortCode,
                 QString::number(existingSample.getParallelNo()));
 
             existingSample.setSampleName(sampleName);
@@ -194,15 +194,26 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
         return existingId;
     }
 
-    SingleTobaccoSampleData newSample = sampleData;
+    SingleTobaccoSampleData newSample;
+    newSample.setShortCode(shortCode);
+    newSample.setProjectName(sampleData.getProjectName());
+    newSample.setBatchCode(sampleData.getBatchCode());
+    newSample.setParallelNo(1);
+    newSample.setDetectDate(m_detectDate);
     QDateTime now = QDateTime::currentDateTime();
     newSample.setCreatedAt(now);
     newSample.setYear(now.date().year());
     newSample.setSampleName(QString("%1-%2-%3-%4").arg(
-        sampleData.getProjectName(),
-        sampleData.getBatchCode(),
-        sampleData.getShortCode(),
-        QString::number(sampleData.getParallelNo())));
+        newSample.getProjectName(),
+        newSample.getBatchCode(),
+        shortCode,
+        QString::number(newSample.getParallelNo())));
+
+    DEBUG_LOG << "创建新小热重（原始数据）样本:"
+              << "short_code=" << shortCode
+              << "project_name=" << newSample.getProjectName()
+              << "batch_code=" << newSample.getBatchCode()
+              << "parallel_no=" << newSample.getParallelNo();
 
     int newId = m_singleTobaccoSampleDao->insert(newSample);
     if (newId > 0) {

@@ -40,6 +40,8 @@ AddCurveDialog::AddCurveDialog(const QString &dataType, QWidget *parent)
         subWindow->setWindowTitle(tr("大热重数据选择"));
     } else if (dataType == "小热重") {
         subWindow->setWindowTitle(tr("小热重数据选择"));
+    } else if (dataType == "小热重（原始数据）") {
+        subWindow->setWindowTitle(tr("小热重（原始数据）选择"));
     } else if (dataType == "色谱") {
         subWindow->setWindowTitle(tr("色谱数据选择"));
     } else {
@@ -227,6 +229,8 @@ void AddCurveDialog::setupLeftNavigator(const QString &dataType)
     if (dataType == "大热重") {
         rootItem = new QTreeWidgetItem(m_dataNavigator, {tr("样本数据")});
     } else if (dataType == "小热重") {
+        rootItem = new QTreeWidgetItem(m_dataNavigator, {tr("样本数据")});
+    } else if (dataType == "小热重（原始数据）") {
         rootItem = new QTreeWidgetItem(m_dataNavigator, {tr("样本数据")});
     } else if (dataType == "色谱") {
         rootItem = new QTreeWidgetItem(m_dataNavigator, {tr("样本数据")});

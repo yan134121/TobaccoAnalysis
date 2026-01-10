@@ -1086,6 +1086,38 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
                 QStringLiteral("工序大热重")
             };
 
+            if (info.type == NavigatorNodeInfo::ShortCode && deletableSampleTypes.contains(info.dataType)) {
+                menu.addSeparator();
+                QAction* delShortCode = menu.addAction(tr("删除短码"));
+                connect(delShortCode, &QAction::triggered, this, [this, info, item]() {
+                    QString tip = tr("将删除【%1】下短码 [%2] 的所有数据。").arg(info.dataType, info.shortCode);
+                    if (QMessageBox::question(this, tr("确认删除"), tip + tr("此操作不可撤销，是否继续？")) != QMessageBox::Yes) {
+                        return;
+                    }
+
+                    QString err;
+                    auto samples = m_dao.fetchParallelSamplesForShortCodeAndType(info.shortCode, info.dataType, err);
+                    if (!err.isEmpty()) {
+                        QMessageBox::warning(this, tr("删除失败"), err);
+                        return;
+                    }
+
+                    for (const auto& sample : samples) {
+                        if (!m_dao.deleteSampleDataByType(sample.id, info.dataType, err)) {
+                            QMessageBox::warning(this, tr("删除失败"), err);
+                            return;
+                        }
+                    }
+
+                    QTreeWidgetItem* parent = item->parent();
+                    if (parent) {
+                        refreshNode(parent);
+                    } else {
+                        refreshDataSource();
+                    }
+                });
+            }
+
             if (info.type == NavigatorNodeInfo::Sample && deletableSampleTypes.contains(info.dataType)) {
                 menu.addSeparator();
                 QAction* delSample = menu.addAction(tr("删除样本"));

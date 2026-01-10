@@ -20,7 +20,6 @@ SampleListDialog::SampleListDialog(QWidget* parent, AppInitializer* appInitializ
     : QDialog(parent), ui(new Ui::SampleListDialog),
       m_bigModel(new QStandardItemModel(this)),
       m_smallModel(new QStandardItemModel(this)),
-      m_smallRawModel(new QStandardItemModel(this)),
       m_chromModel(new QStandardItemModel(this)),
       m_processBigModel(new QStandardItemModel(this)),
       m_appInitializer(appInitializer)
@@ -36,7 +35,6 @@ SampleListDialog::SampleListDialog(QWidget* parent, AppInitializer* appInitializ
     
     loadBigSamples();
     loadSmallSamples();
-    loadSmallRawSamples();
     loadChromSamples();
     loadProcessBigSamples();
     // 初始构建索引与填充下拉
@@ -55,28 +53,23 @@ void SampleListDialog::setupModels()
     QStringList headers = {"项目", "批次", "短码", "平行号", "样本名", "数据点数"};
     m_bigModel->setHorizontalHeaderLabels(headers);
     m_smallModel->setHorizontalHeaderLabels(headers);
-    m_smallRawModel->setHorizontalHeaderLabels(headers);
     m_chromModel->setHorizontalHeaderLabels(headers);
     m_processBigModel->setHorizontalHeaderLabels(headers);
 
     ui->bigTableView->setModel(m_bigModel);
     ui->smallTableView->setModel(m_smallModel);
-    ui->smallRawTableView->setModel(m_smallRawModel);
     ui->chromTableView->setModel(m_chromModel);
     ui->processBigTableView->setModel(m_processBigModel);
     ui->bigTableView->horizontalHeader()->setStretchLastSection(true);
     ui->smallTableView->horizontalHeader()->setStretchLastSection(true);
-    ui->smallRawTableView->horizontalHeader()->setStretchLastSection(true);
     ui->chromTableView->horizontalHeader()->setStretchLastSection(true);
     ui->processBigTableView->horizontalHeader()->setStretchLastSection(true);
     ui->bigTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->smallTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
-    ui->smallRawTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->chromTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->processBigTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->bigTableView->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->smallTableView->setSelectionMode(QAbstractItemView::SingleSelection);
-    ui->smallRawTableView->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->chromTableView->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->processBigTableView->setSelectionMode(QAbstractItemView::SingleSelection);
 }
@@ -133,33 +126,6 @@ void SampleListDialog::loadSmallSamples()
         row << new QStandardItem(q.value(5).toString());
         row << new QStandardItem(QString::number(countSmallPoints(sampleId)));
         m_smallModel->appendRow(row);
-    }
-}
-
-void SampleListDialog::loadSmallRawSamples()
-{
-    m_smallRawModel->setRowCount(0);
-    QSqlQuery q(DatabaseManager::instance().database());
-    QString sql = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "get_samples_by_data_type_small_raw").sql;
-    if (sql.isEmpty()) {
-        sql = "SELECT s.id, s.project_name, b.batch_code, s.short_code, s.parallel_no, s.sample_name "
-              "FROM single_tobacco_sample s LEFT JOIN tobacco_batch b ON s.batch_id = b.id "
-              "WHERE EXISTS (SELECT 1 FROM tg_small_raw_data tsrd WHERE tsrd.sample_id = s.id) "
-              "ORDER BY s.project_name, b.batch_code, s.short_code, s.parallel_no";
-    }
-    if (!q.exec(sql)) return;
-    while (q.next()) {
-        int sampleId = q.value(0).toInt();
-        QList<QStandardItem*> row;
-        QStandardItem* projectItem = new QStandardItem(q.value(1).toString());
-        projectItem->setData(sampleId, Qt::UserRole);
-        row << projectItem;
-        row << new QStandardItem(q.value(2).toString());
-        row << new QStandardItem(q.value(3).toString());
-        row << new QStandardItem(q.value(4).toString());
-        row << new QStandardItem(q.value(5).toString());
-        row << new QStandardItem(QString::number(countSmallRawPoints(sampleId)));
-        m_smallRawModel->appendRow(row);
     }
 }
 
@@ -241,18 +207,6 @@ int SampleListDialog::countSmallPoints(int sampleId)
     return (q.exec() && q.next()) ? q.value(0).toInt() : 0;
 }
 
-int SampleListDialog::countSmallRawPoints(int sampleId)
-{
-    QSqlQuery q(DatabaseManager::instance().database());
-    QString sql = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "count_data_points_small_raw").sql;
-    if (sql.isEmpty()) {
-        sql = "SELECT COUNT(*) FROM tg_small_raw_data WHERE sample_id = :sample_id";
-    }
-    q.prepare(sql);
-    q.bindValue(":sample_id", sampleId);
-    return (q.exec() && q.next()) ? q.value(0).toInt() : 0;
-}
-
 int SampleListDialog::countChromPoints(int sampleId)
 {
     QSqlQuery q(DatabaseManager::instance().database());
@@ -283,8 +237,7 @@ QTableView* SampleListDialog::currentTableView() const
     int idx = ui->tabWidget->currentIndex();
     if (idx == 0) return ui->bigTableView;
     if (idx == 1) return ui->smallTableView;
-    if (idx == 2) return ui->smallRawTableView;
-    if (idx == 3) return ui->chromTableView;
+    if (idx == 2) return ui->chromTableView;
     return ui->processBigTableView;
 }
 
@@ -294,8 +247,7 @@ QStandardItemModel* SampleListDialog::currentModel() const
     int idx = ui->tabWidget->currentIndex();
     if (idx == 0) return m_bigModel;
     if (idx == 1) return m_smallModel;
-    if (idx == 2) return m_smallRawModel;
-    if (idx == 3) return m_chromModel;
+    if (idx == 2) return m_chromModel;
     return m_processBigModel;
 }
 
@@ -305,15 +257,14 @@ QString SampleListDialog::currentDataType() const
     int idx = ui->tabWidget->currentIndex();
     if (idx == 0) return QStringLiteral("大热重");
     if (idx == 1) return QStringLiteral("小热重");
-    if (idx == 2) return QStringLiteral("小热重（原始数据）");
-    if (idx == 3) return QStringLiteral("色谱");
+    if (idx == 2) return QStringLiteral("色谱");
     return QStringLiteral("工序大热重");
 }
 
 // 当前是否为工序分支
 bool SampleListDialog::currentIsProcessBranch() const
 {
-    return ui->tabWidget->currentIndex() == 4;
+    return ui->tabWidget->currentIndex() == 3;
 }
 
 // 删除当前选中样本（级联删除）
@@ -353,8 +304,6 @@ void SampleListDialog::on_deleteButton_clicked()
     } else if (ui->tabWidget->currentIndex() == 1) {
         loadSmallSamples();
     } else if (ui->tabWidget->currentIndex() == 2) {
-        loadSmallRawSamples();
-    } else if (ui->tabWidget->currentIndex() == 3) {
         loadChromSamples();
     } else {
         loadProcessBigSamples();
@@ -409,7 +358,7 @@ void SampleListDialog::on_previewButton_clicked()
         chart->addGraph(xData, yData, sampleName, QColor::fromHsv(QRandomGenerator::global()->bounded(360), 200, 200), sampleId);
         if (dataType == QStringLiteral("大热重") || dataType == QStringLiteral("工序大热重")) {
             chart->setLabels(tr("数据序号"), tr("质量/重量"));
-        } else if (dataType == QStringLiteral("小热重") || dataType == QStringLiteral("小热重（原始数据）")) {
+        } else if (dataType == QStringLiteral("小热重")) {
             chart->setLabels(tr("温度 (°C)"), tr("热重微分值 (DTG)"));
         } else if (dataType == QStringLiteral("色谱")) {
             chart->setLabels(tr("保留时间 (min)"), tr("响应值"));

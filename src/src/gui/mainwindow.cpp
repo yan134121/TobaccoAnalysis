@@ -72,7 +72,6 @@ MainWindow::MainWindow(AppInitializer* initializer, QWidget *parent)
     // 初始化数据处理对话框指针
     tgBigDataProcessDialog = nullptr;
     tgSmallDataProcessDialog = nullptr;
-    tgSmallRawDataProcessDialog = nullptr;
     chromatographDataProcessDialog = nullptr;
     processTgBigDataProcessDialog = nullptr;
 
@@ -127,7 +126,6 @@ DEBUG_LOG << "m_navigator" << m_navigator;
                     QString s = t.trimmed();
                     if (s.compare("TG_BIG", Qt::CaseInsensitive) == 0 || s == QStringLiteral("大热重")) return QStringLiteral("大热重");
                     if (s.compare("TG_SMALL", Qt::CaseInsensitive) == 0 || s == QStringLiteral("小热重")) return QStringLiteral("小热重");
-                    if (s.compare("TG_SMALL_RAW", Qt::CaseInsensitive) == 0 || s == QStringLiteral("小热重（原始数据）")) return QStringLiteral("小热重（原始数据）");
                     if (s.compare("CHROMATOGRAM", Qt::CaseInsensitive) == 0 || s == QStringLiteral("色谱")) return QStringLiteral("色谱");
                     if (s.compare("PROCESS_TG_BIG", Qt::CaseInsensitive) == 0 || s == QStringLiteral("工序大热重")) return QStringLiteral("工序大热重");
                     return s; // 未知类型原样返回
@@ -163,9 +161,6 @@ DEBUG_LOG << "m_navigator" << m_navigator;
                 } else if (typeKey == QStringLiteral("小热重") && tgSmallDataProcessDialog) {
                     if (selected) tgSmallDataProcessDialog->addSampleCurve(sampleId, legendName);
                     else tgSmallDataProcessDialog->removeSampleCurve(sampleId);
-                } else if (typeKey == QStringLiteral("小热重（原始数据）") && tgSmallRawDataProcessDialog) {
-                    if (selected) tgSmallRawDataProcessDialog->addSampleCurve(sampleId, legendName);
-                    else tgSmallRawDataProcessDialog->removeSampleCurve(sampleId);
                 } else if (typeKey == QStringLiteral("色谱") && chromatographDataProcessDialog) {
                     if (selected) chromatographDataProcessDialog->addSampleCurve(sampleId, legendName);
                     else chromatographDataProcessDialog->removeSampleCurve(sampleId);
@@ -377,19 +372,6 @@ void MainWindow::onSampleDoubleClicked(QTreeWidgetItem *item, int /*column*/)
             }
         }
     } 
-    else if (info.dataType == "小热重（原始数据）") {
-        onTgSmallRawDataProcessActionTriggered();
-
-        if (tgSmallRawDataProcessDialog) {
-            tgSmallRawDataProcessDialog->selectSample(info.id, item->text(0));
-
-            bool isChecked = item->checkState(0) == Qt::Checked;
-            DEBUG_LOG << "样本双击：更新导航树中样本ID=" << info.id << "的选择状态为" << isChecked;
-            if (m_navigator) {
-                m_navigator->setSampleCheckState(info.id, isChecked);
-            }
-        }
-    }
     else if (info.dataType == "色谱") {
         // 打开色谱数据处理对话框
         onChromatographDataProcessActionTriggered();
@@ -468,14 +450,6 @@ void MainWindow::onOpenSampleViewWindow(int sampleId,
             // tgSmallDataProcessDialog->selectSample(sampleId, sampleText);
         }
     } 
-    else if (dataType == "小热重（原始数据）") {
-        onTgSmallRawDataProcessActionTriggered();
-
-        if (tgSmallRawDataProcessDialog) {
-            QString sampleText = QString("%1-%2-%3").arg(batchCode).arg(shortCode).arg(parallelNo);
-            Q_UNUSED(sampleText);
-        }
-    }
     else if (dataType == "色谱") {
         // 打开色谱数据处理对话框
         onChromatographDataProcessActionTriggered();
@@ -546,7 +520,6 @@ void MainWindow::onActiveSubWindowChanged(QMdiSubWindow *window)
             // 禁用所有数据类型的选择框
             m_navigator->enableSampleCheckboxesByDataType("大热重", false);
             m_navigator->enableSampleCheckboxesByDataType("小热重", false);
-            m_navigator->enableSampleCheckboxesByDataType("小热重（原始数据）", false);
             m_navigator->enableSampleCheckboxesByDataType("色谱", false);
             m_navigator->enableSampleCheckboxesByDataType("工序大热重", false);
             
@@ -554,11 +527,7 @@ void MainWindow::onActiveSubWindowChanged(QMdiSubWindow *window)
             if (qobject_cast<TgBigDataProcessDialog*>(widget)) {
                 m_navigator->enableSampleCheckboxesByDataType("大热重", true);
             } else if (qobject_cast<TgSmallDataProcessDialog*>(widget)) {
-                QString dataTypeName = widget->property("dataTypeName").toString();
-                if (dataTypeName.isEmpty()) {
-                    dataTypeName = QStringLiteral("小热重");
-                }
-                m_navigator->enableSampleCheckboxesByDataType(dataTypeName, true);
+                m_navigator->enableSampleCheckboxesByDataType("小热重", true);
             } else if (qobject_cast<ChromatographDataProcessDialog*>(widget)) {
                 m_navigator->enableSampleCheckboxesByDataType("色谱", true);
             }else if (qobject_cast<ProcessTgBigDataProcessDialog*>(widget)) {
@@ -850,7 +819,6 @@ void MainWindow::createToolBars()
     dataProcessToolBar = addToolBar(tr("数据处理"));
     dataProcessToolBar->addAction(tgBigDataProcessAction);
     dataProcessToolBar->addAction(tgSmallDataProcessAction);
-    dataProcessToolBar->addAction(tgSmallRawDataProcessAction);
     dataProcessToolBar->addAction(chromatographDataProcessAction);
     dataProcessToolBar->addAction(processTgBigDataProcessAction);
 
@@ -1108,9 +1076,6 @@ connect(m_diffAction, &QAction::triggered, this, &MainWindow::onDiffActionTrigge
     tgSmallDataProcessAction = new QAction(STR("action.tg_small_data_process"), this);
     connect(tgSmallDataProcessAction, &QAction::triggered, this, &MainWindow::onTgSmallDataProcessActionTriggered);
 
-    tgSmallRawDataProcessAction = new QAction(tr("小热重（原始数据）"), this);
-    connect(tgSmallRawDataProcessAction, &QAction::triggered, this, &MainWindow::onTgSmallRawDataProcessActionTriggered);
-
     chromatographDataProcessAction = new QAction(STR("action.chromatograph_data_process"), this);
     connect(chromatographDataProcessAction, &QAction::triggered, this, &MainWindow::onChromatographDataProcessActionTriggered);
 
@@ -1205,7 +1170,6 @@ void MainWindow::createMenus()
     QMenu* dataProcessMenu = menuBar()->addMenu(STR("main.menu.dataProcess"));
     dataProcessMenu->addAction(tgBigDataProcessAction);
     dataProcessMenu->addAction(tgSmallDataProcessAction);
-    dataProcessMenu->addAction(tgSmallRawDataProcessAction);
     dataProcessMenu->addAction(chromatographDataProcessAction);
     dataProcessMenu->addAction(processTgBigDataProcessAction);
 
@@ -1569,50 +1533,6 @@ void MainWindow::onTgSmallDataProcessActionTriggered()
     subWindow->showMaximized();  //  这里最大化
 }
 
-void MainWindow::onTgSmallRawDataProcessActionTriggered()
-{
-    if (tgSmallRawDataProcessDialog) {
-        for (QMdiSubWindow* window : m_mdiArea->subWindowList()) {
-            if (window->widget() == tgSmallRawDataProcessDialog) {
-                m_mdiArea->setActiveSubWindow(window);
-                if (m_navigator) m_navigator->enableSampleCheckboxesByDataType(QStringLiteral("小热重（原始数据）"), true);
-                return;
-            }
-        }
-    }
-
-    tgSmallRawDataProcessDialog = new TgSmallDataProcessDialog(this, m_appInitializer, m_navigator, QStringLiteral("小热重（原始数据）"));
-    {
-        QPixmap px(1, 1);
-        px.fill(Qt::transparent);
-        tgSmallRawDataProcessDialog->setWindowIcon(QIcon(px));
-    }
-
-    connect(tgSmallRawDataProcessDialog, &TgSmallDataProcessDialog::sampleSelected,
-            this, [this](int sampleId, bool selected) {
-                if (m_navigator) {
-                    m_navigator->setSampleCheckStateForType(sampleId, QStringLiteral("小热重（原始数据）"), selected);
-                }
-            });
-
-    connect(tgSmallRawDataProcessDialog, &TgSmallDataProcessDialog::requestNewTgSmallDifferenceWorkbench,
-            this, &MainWindow::onCreateTgSmallDifferenceWorkbench);
-
-    QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(tgSmallRawDataProcessDialog);
-    subWindow->setAttribute(Qt::WA_DeleteOnClose);
-    subWindow->setProperty("sampleId", -1);
-
-    connect(tgSmallRawDataProcessDialog, &QWidget::destroyed, this, [this]() {
-        tgSmallRawDataProcessDialog = nullptr;
-    });
-
-    m_navigator->addOpenView(subWindow);
-    if (m_navigator) m_navigator->enableSampleCheckboxesByDataType(QStringLiteral("小热重（原始数据）"), true);
-
-    subWindow->show();
-    subWindow->showMaximized();
-}
-
 // void MainWindow::onChromatographDataProcessActionTriggered()
 // {
 //     // 如果窗口已经存在，则显示并激活它
@@ -1846,7 +1766,6 @@ void MainWindow::onPrintSelectedSamplesGrouped()
     combo->addItems({
         QStringLiteral("大热重"),
         QStringLiteral("小热重"),
-        QStringLiteral("小热重（原始数据）"),
         QStringLiteral("色谱"),
         QStringLiteral("工序大热重")
     });
@@ -1858,7 +1777,6 @@ void MainWindow::onPrintSelectedSamplesGrouped()
         QString s = tr("【选中样本统计】\n");
         s += QString("大热重: %1个\n").arg(counts.value(QStringLiteral("大热重"), 0));
         s += QString("小热重: %1个\n").arg(counts.value(QStringLiteral("小热重"), 0));
-        s += QString("小热重（原始数据）: %1个\n").arg(counts.value(QStringLiteral("小热重（原始数据）"), 0));
         s += QString("色谱: %1个\n").arg(counts.value(QStringLiteral("色谱"), 0));
         s += QString("工序大热重: %1个").arg(counts.value(QStringLiteral("工序大热重"), 0));
         statLabel->setText(s);
@@ -1993,9 +1911,6 @@ void MainWindow::on_actionOpenSingleMaterialData_triggered()
                 } else if (category == "TG_SMALL") {
                     m_navigator->refreshDataSource();
                     typeName = QStringLiteral("小热重");
-                } else if (category == "TG_SMALL_RAW") {
-                    m_navigator->refreshDataSource();
-                    typeName = QStringLiteral("小热重（原始数据）");
                 } else if (category == "CHROMATOGRAPHY") {
                     m_navigator->refreshDataSource();
                     typeName = QStringLiteral("色谱");
@@ -2365,25 +2280,7 @@ void MainWindow::onSelectAllSamplesInBatch(const NavigatorNodeInfo& batchInfo)
                 }
             }
         }
-        // 4) 小热重（原始数据）
-        else if (title.contains("小热重（原始数据）")) {
-            if (!tgSmallRawDataProcessDialog || !tgSmallRawDataProcessDialog->isVisible()) {
-                DEBUG_LOG << "小热重（原始数据）处理对话框未打开，创建它";
-                onTgSmallRawDataProcessActionTriggered();
-            }
-
-            if (tgSmallRawDataProcessDialog && tgSmallRawDataProcessDialog->isVisible()) {
-                DEBUG_LOG << "调用小热重（原始数据）对话框方法选择批次下的所有样本";
-                tgSmallRawDataProcessDialog->onSelectAllSamplesInBatch(batchInfo.projectName, batchInfo.batchCode);
-                SingleTobaccoSampleDAO dao;
-                auto samples = dao.getSampleIdentifiersByProjectAndBatch(batchInfo.projectName, batchInfo.batchCode, BatchType::NORMAL);
-                for (const auto& sid : samples) {
-                    SampleSelectionManager::instance()->setSelectedWithType(sid.sampleId, QStringLiteral("小热重（原始数据）"), true, QStringLiteral("BatchSelect"));
-                    if (m_navigator) m_navigator->setSampleCheckStateForType(sid.sampleId, QStringLiteral("小热重（原始数据）"), true);
-                }
-            }
-        }
-        // 5) 小热重
+        // 4) 小热重
         else if (title.contains("小热重")){
             // 检查小热重数据处理对话框是否已打开
             if (!tgSmallDataProcessDialog || !tgSmallDataProcessDialog->isVisible()) {
@@ -2454,7 +2351,7 @@ void MainWindow::onAboutActionTriggered()
         "<b>%1</b><br/>"
         "版本：%2<br/>"
         // "操作系统：%3（%4）<br/>"
-        "支持数据类型：大热重、小热重、小热重（原始数据）、色谱、工序大热重<br/>"
+        "支持数据类型：大热重、小热重、色谱、工序大热重<br/>"
         // "主要功能：数据导入与浏览、参数配置、批量处理、基线校正、差异度分析、绘图导出等<br/>"
         // "联系方式：support@example.com<br/>"
         ).arg(appName).arg(version)

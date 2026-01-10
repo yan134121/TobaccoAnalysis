@@ -93,13 +93,6 @@ QVector<QPointF> SampleDAO::fetchChartDataForSample(int sampleId, const DataType
         }
         xColumn = "temperature";
         yColumn = "dtg_value";
-    } else if (dataType == DataType::TG_SMALL_RAW) {
-        queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small_raw").sql;
-        if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature";
-        }
-        xColumn = "temperature";
-        yColumn = "dtg_value";
     // } else if (dataType == DataType::CHROMATOGRAPHY || dataType == DataType::GC) {
        } else if (dataType == DataType::CHROMATOGRAM) {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;
@@ -155,8 +148,6 @@ QList<QVariantMap> SampleDAO::getSamplesByDataType(const QString &dataType)
         tableName = "tg_big_data";
     } else if (dataType == "小热重") {
         tableName = "tg_small_data";
-    } else if (dataType == "小热重（原始数据）") {
-        tableName = "tg_small_raw_data";
     } else if (dataType == "色谱") {
         tableName = "chromatography_data";
     } else {
@@ -171,8 +162,6 @@ QList<QVariantMap> SampleDAO::getSamplesByDataType(const QString &dataType)
         sqlKey = "select_samples_by_data_type_big";
     } else if (dataType == "小热重") {
         sqlKey = "select_samples_by_data_type_small";
-    } else if (dataType == "小热重（原始数据）") {
-        sqlKey = "select_samples_by_data_type_small_raw";
     } else if (dataType == "色谱") {
         sqlKey = "select_samples_by_data_type_chrom";
     }

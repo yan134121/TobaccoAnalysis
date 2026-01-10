@@ -54,7 +54,10 @@ class TgSmallDataProcessDialog : public QWidget
     Q_OBJECT
 
 public:
-    explicit TgSmallDataProcessDialog(QWidget *parent = nullptr, AppInitializer* appInitializer = nullptr, DataNavigator *mainNavigator = nullptr);
+    explicit TgSmallDataProcessDialog(QWidget *parent = nullptr,
+                                      AppInitializer* appInitializer = nullptr,
+                                      DataNavigator *mainNavigator = nullptr,
+                                      const QString& dataTypeName = QString("小热重"));
     ~TgSmallDataProcessDialog();
     
     // 选择指定的样本并显示其曲线
@@ -157,6 +160,8 @@ private:
     
     // 参数设置对话框
     TgSmallParameterSettingsDialog* m_parameterDialog;
+
+    QString m_dataTypeName;
     
     // 存储样本曲线的映射表 <样本ID, 曲线对象>
     QMap<int, QLineSeries*> m_sampleCurves;

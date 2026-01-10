@@ -44,6 +44,7 @@ QT_CHARTS_USE_NAMESPACE
 // 前置声明
 class DataNavigator;
 class TgSmallParameterSettingsDialog;
+class TgBigParameterSettingsDialog;
 
 namespace Ui {
 class TgSmallDataProcessDialog;
@@ -158,9 +159,6 @@ private:
     void resetParameters();
     void updateRightPanel(QTreeWidgetItem *item);
     
-    // 参数设置对话框
-    TgSmallParameterSettingsDialog* m_parameterDialog;
-
     QString m_dataTypeName;
     
     // 存储样本曲线的映射表 <样本ID, 曲线对象>
@@ -268,7 +266,8 @@ DataProcessingService* m_processingService = nullptr; // 指向后台服务
 
     AppInitializer* m_appInitializer = nullptr; // <-- 新增成员变量
 
-    TgSmallParameterSettingsDialog *m_paramDialog = nullptr;
+    TgSmallParameterSettingsDialog *m_smallParamDialog = nullptr;
+    TgBigParameterSettingsDialog *m_bigParamDialog = nullptr;
     QMap<int, SampleIdentifier> sampleIdMap;
 
     // 根据样本ID构造统一显示名称 short_code(parallel_no)-timestamp
@@ -289,6 +288,9 @@ DataProcessingService* m_processingService = nullptr; // 指向后台服务
     void removeSelectedListItem(int sampleId);
     // 如无缓存则异步预取曲线数据并缓存
     void prefetchCurveIfNeeded(int sampleId);
+
+    QDialog* activeParameterDialog() const;
+    ProcessingParameters activeDialogParameters() const;
 
 
 

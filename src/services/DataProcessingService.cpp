@@ -86,12 +86,17 @@ static QSqlDatabase ensureThreadLocalDatabase()
 
 SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const ProcessingParameters &params)
 {
+    return runTgBigLikePipeline(DataType::TG_BIG, sampleId, params);
+}
+
+SampleDataFlexible DataProcessingService::runTgBigLikePipeline(DataType dataType, int sampleId, const ProcessingParameters &params)
+{
     DEBUG_LOG << "Pipeline running in thread:" << QThread::currentThread();
     // DEBUG_LOG << "Processing parameters:" << params << "sampleId" << sampleId;
 
     SampleDataFlexible sampleData;
     sampleData.sampleId = sampleId;
-    sampleData.dataType = DataType::TG_BIG;
+    sampleData.dataType = dataType;
     QString error;
     SampleDAO dao;
 
@@ -110,7 +115,7 @@ SampleDataFlexible DataProcessingService::runTgBigPipeline(int sampleId, const P
     timer.restart();
 
     // --- 1. 获取原始数据 ---
-    QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, DataType::TG_BIG, error);
+    QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, dataType, error);
     if (rawPoints.isEmpty()) {
         WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
         return sampleData;
@@ -498,39 +503,7 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
 
 SampleDataFlexible DataProcessingService::runTgSmallRawPipeline(int sampleId, const ProcessingParameters &params)
 {
-    DEBUG_LOG << "Small raw pipeline running in thread:" << QThread::currentThread();
-
-    SampleDataFlexible sampleData;
-    sampleData.sampleId = sampleId;
-    sampleData.dataType = DataType::TG_SMALL_RAW;
-    QString error;
-    SampleDAO dao;
-
-    QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, DataType::TG_SMALL_RAW, error);
-    if (rawPoints.isEmpty()) {
-        WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
-        return sampleData;
-    }
-
-    QVector<double> x, y;
-    for (const auto &p : rawPoints) {
-        x.append(p.x());
-        y.append(p.y());
-    }
-
-    StageData stage;
-    stage.stageName = StageName::RawData;
-    stage.curve = QSharedPointer<Curve>::create(x, y, "原始微分数据0");
-    stage.curve->setSampleId(sampleId);
-    stage.algorithm = AlgorithmType::None;
-    stage.isSegmented = false;
-    stage.numSegments = 1;
-
-    sampleData.stages.append(stage);
-
-    DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
-
-    return sampleData;
+    return runTgBigLikePipeline(DataType::TG_SMALL_RAW, sampleId, params);
 }
 
 // ---------------- 批量样本流水线 ----------------

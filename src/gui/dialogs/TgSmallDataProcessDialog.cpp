@@ -14,6 +14,7 @@
 #include "gui/views/DataNavigator.h"
 #include "core/common.h"
 #include "TgSmallParameterSettingsDialog.h"
+#include "TgBigParameterSettingsDialog.h"
 #include "AppInitializer.h"
 #include "gui/views/ChartView.h"
 #include "core/entities/Curve.h"
@@ -60,11 +61,16 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent,
     // tabWidget->addTab(tab1, tr("小热重数据处理"));
 
     // 提前创建参数设置窗口
-    m_paramDialog = new TgSmallParameterSettingsDialog(m_currentParams, this);
-
-    // 连接信号槽（只需一次）
-    connect(m_paramDialog, &TgSmallParameterSettingsDialog::parametersApplied,
-            this, &TgSmallDataProcessDialog::onParametersApplied);
+    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+        m_bigParamDialog = new TgBigParameterSettingsDialog(m_currentParams, this);
+        m_bigParamDialog->setWindowTitle(tr("%1处理参数设置").arg(m_dataTypeName));
+        connect(m_bigParamDialog, &TgBigParameterSettingsDialog::parametersApplied,
+                this, &TgSmallDataProcessDialog::onParametersApplied);
+    } else {
+        m_smallParamDialog = new TgSmallParameterSettingsDialog(m_currentParams, this);
+        connect(m_smallParamDialog, &TgSmallParameterSettingsDialog::parametersApplied,
+                this, &TgSmallDataProcessDialog::onParametersApplied);
+    }
     
     setupUI();
 
@@ -1929,10 +1935,10 @@ void TgSmallDataProcessDialog::onCancelButtonClicked()
 }
 
 
- void TgSmallDataProcessDialog::onProcessAndPlotButtonClicked()
+void TgSmallDataProcessDialog::onProcessAndPlotButtonClicked()
  {
     DEBUG_LOG << "TgSmallDataProcessDialog::onProcessAndPlotButtonClicked - Processing and plotting samples...";
-    m_currentParams = m_paramDialog->getParameters();
+    m_currentParams = activeDialogParameters();
 
     DEBUG_LOG << "TgSmallDataProcessDialog::onProcessAndPlotButtonClicked - Current parameters:" << m_currentParams.toString();
     onParametersApplied( m_currentParams );
@@ -1954,12 +1960,31 @@ void TgSmallDataProcessDialog::onParameterSettingsClicked()
     // dialog->show(); 
     // // dialog->exec(); // 如果仍然想用模态，也可以，逻辑依然成立
 
-    if (m_paramDialog) {
+    if (QDialog* dialog = activeParameterDialog()) {
         // 更新窗口显示当前参数
-        // m_paramDialog->setParameters(m_currentParams);
-        m_paramDialog->show();  // 或 exec() 模态显示
+        // dialog->setParameters(m_currentParams);
+        dialog->show();  // 或 exec() 模态显示
     }
 
+}
+
+QDialog* TgSmallDataProcessDialog::activeParameterDialog() const
+{
+    if (m_bigParamDialog) {
+        return m_bigParamDialog;
+    }
+    return m_smallParamDialog;
+}
+
+ProcessingParameters TgSmallDataProcessDialog::activeDialogParameters() const
+{
+    if (m_bigParamDialog) {
+        return m_bigParamDialog->getParameters();
+    }
+    if (m_smallParamDialog) {
+        return m_smallParamDialog->getParameters();
+    }
+    return ProcessingParameters{};
 }
 
 // 【关键】实现响应参数应用的槽函数

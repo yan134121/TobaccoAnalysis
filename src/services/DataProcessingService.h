@@ -37,6 +37,7 @@ public slots:
 
 private:
     void registerSteps();
+    SampleDataFlexible runTgBigLikePipeline(DataType dataType, int sampleId, const ProcessingParameters& params);
     QMap<QString, IProcessingStep*> m_registeredSteps;
     AppInitializer* m_appInitializer = nullptr; // 
 };

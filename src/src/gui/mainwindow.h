@@ -93,6 +93,7 @@ private slots:
 
     void onTgBigDataProcessActionTriggered();
     void onTgSmallDataProcessActionTriggered();
+    void onTgSmallRawDataProcessActionTriggered();
     void onChromatographDataProcessActionTriggered();
     void onProcessTgBigDataProcessActionTriggered();
     // 打印所有选中样本（按数据类型分组）
@@ -183,6 +184,7 @@ private:
     // 数据处理对话框
     TgBigDataProcessDialog* tgBigDataProcessDialog;
     TgSmallDataProcessDialog* tgSmallDataProcessDialog;
+    TgSmallDataProcessDialog* tgSmallRawDataProcessDialog;
     ChromatographDataProcessDialog* chromatographDataProcessDialog;
     ProcessTgBigDataProcessDialog* processTgBigDataProcessDialog;
     TgBigDifferenceWorkbench* m_tgBigDifferenceWorkbench = nullptr;
@@ -256,7 +258,7 @@ private:
 
     // 数据处理菜单
     // 数据处理菜单
-    QAction *tgBigDataProcessAction, *tgSmallDataProcessAction, *chromatographDataProcessAction;
+    QAction *tgBigDataProcessAction, *tgSmallDataProcessAction, *tgSmallRawDataProcessAction, *chromatographDataProcessAction;
     QAction *processTgBigDataProcessAction;//大热重工序数据处理
     
 

@@ -24,12 +24,14 @@ public slots:
     BatchGroupData runTgBigPipelineForMultiple(const QList<int>& sampleIds, const ProcessingParameters& params);
 
     BatchGroupData runTgSmallPipelineForMultiple(const QList<int> &sampleIds, const ProcessingParameters &params);
+    BatchGroupData runTgSmallRawPipelineForMultiple(const QList<int> &sampleIds, const ProcessingParameters &params);
     BatchGroupData runChromatographPipelineForMultiple(const QList<int> &sampleIds, const ProcessingParameters &params);
     BatchGroupData runProcessTgBigPipelineForMultiple(const QList<int> &sampleIds, const ProcessingParameters &params);
 
     // 这个方法将在后台线程中被调用
     SampleDataFlexible runTgBigPipeline(int sampleId, const ProcessingParameters& params);
     SampleDataFlexible runTgSmallPipeline(int sampleId, const ProcessingParameters &params);
+    SampleDataFlexible runTgSmallRawPipeline(int sampleId, const ProcessingParameters &params);
     SampleDataFlexible runChromatographPipeline(int sampleId, const ProcessingParameters& params);
     SampleDataFlexible runProcessTgBigPipeline(int sampleId, const ProcessingParameters& params);
 

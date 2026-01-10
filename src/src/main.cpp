@@ -1,4 +1,4 @@
-#include "gui/MainWindow.h"
+﻿#include "gui/MainWindow.h"
 #include "data_access/DatabaseManager.h" // 
 #include "core/common.h" // 
 #include <QApplication>
@@ -49,6 +49,10 @@ int main(int argc, char *argv[])
     
     qRegisterMetaType<QList<DifferenceResultRow>>("QList<DifferenceResultRow>");
     QApplication a(argc, argv);
+
+
+
+
 
     #ifdef _DEBUG
         DEBUG_LOG << "Debug mode";
@@ -114,10 +118,39 @@ int main(int argc, char *argv[])
     QString user = dbConfig["user"].toString();
     QString password = dbConfig["password"].toString();
     
-    if (dbName.isEmpty() || user.isEmpty()) {
-        QMessageBox::critical(nullptr, "配置错误", "数据库配置不完整");
-        return -1;
-    }
+    // // 1. 获取可用驱动列表并转换为字符串
+    // QStringList driverList = QSqlDatabase::drivers();
+    // QString allDrivers = driverList.join(", "); // 将 ["QSQLITE", "QMYSQL"] 变成 "QSQLITE, QMYSQL"
+
+    // // 3. 组合详细的调试信息
+    // QString debugInfo = QString(
+    //     "【环境诊断】\n"
+    //     "系统可用驱动: [%1]\n\n"
+    //     "【读取到的配置】\n"
+    //     "主机: %2\n"
+    //     "端口: %3\n"
+    //     "库名: %4\n"
+    //     "用户: %5\n"
+    //     "密码: %6\n\n"
+    //     "提示: 如果可用驱动里没有 QMYSQL，说明插件缺失。\n"
+    //     "如果库里有 QMYSQL 但仍报错，请检查 libmysql.dll 是否在 exe 目录下。"
+    // ).arg(allDrivers)
+    //     .arg(host)
+    //     .arg(port)
+    //     .arg(dbName)
+    //     .arg(user)
+    //     .arg(password);
+
+    // // 3. 弹出警告框
+    // QMessageBox::warning(nullptr, "连接配置核对", debugInfo);
+
+    // // 诊断输出
+    // if (!DatabaseManager::instance().connectToDb(dbName, user, password, host, port)) {
+    //     // 修改这部分代码来查看具体错误
+    //     QString errorText = QSqlDatabase::database().lastError().text();
+    //     QMessageBox::warning(nullptr, "数据库未连接",
+    //         "详细错误信息：" + errorText);
+    // }
     
     // 使用配置文件中的参数连接数据库
     if (!DatabaseManager::instance().connectToDb(dbName, user, password, host, port)) {

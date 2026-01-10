@@ -496,6 +496,43 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
     return sampleData;
 }
 
+SampleDataFlexible DataProcessingService::runTgSmallRawPipeline(int sampleId, const ProcessingParameters &params)
+{
+    DEBUG_LOG << "Small raw pipeline running in thread:" << QThread::currentThread();
+
+    SampleDataFlexible sampleData;
+    sampleData.sampleId = sampleId;
+    sampleData.dataType = DataType::TG_SMALL_RAW;
+    QString error;
+    SampleDAO dao;
+
+    QVector<QPointF> rawPoints = dao.fetchChartDataForSample(sampleId, DataType::TG_SMALL_RAW, error);
+    if (rawPoints.isEmpty()) {
+        WARNING_LOG << "Pipeline failed: No raw data for sample" << sampleId;
+        return sampleData;
+    }
+
+    QVector<double> x, y;
+    for (const auto &p : rawPoints) {
+        x.append(p.x());
+        y.append(p.y());
+    }
+
+    StageData stage;
+    stage.stageName = StageName::RawData;
+    stage.curve = QSharedPointer<Curve>::create(x, y, "原始微分数据0");
+    stage.curve->setSampleId(sampleId);
+    stage.algorithm = AlgorithmType::None;
+    stage.isSegmented = false;
+    stage.numSegments = 1;
+
+    sampleData.stages.append(stage);
+
+    DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
+
+    return sampleData;
+}
+
 // ---------------- 批量样本流水线 ----------------
 BatchGroupData DataProcessingService::runTgSmallPipelineForMultiple(
     const QList<int> &sampleIds,
@@ -555,6 +592,37 @@ BatchGroupData DataProcessingService::runTgSmallPipelineForMultiple(
     //         DEBUG_LOG << QString("Sample %1: derivative is null!").arg(sampleId);
     //     }
     // }
+
+    return batchResults;
+}
+
+BatchGroupData DataProcessingService::runTgSmallRawPipelineForMultiple(
+    const QList<int> &sampleIds,
+    const ProcessingParameters &params)
+{
+    BatchGroupData batchResults;
+    SingleTobaccoSampleDAO dao;
+
+    DEBUG_LOG << "Processing small raw TG samples:" << sampleIds;
+
+    for (int sampleId : sampleIds) {
+        SampleDataFlexible singleSample = runTgSmallRawPipeline(sampleId, params);
+        SampleIdentifier identifier = dao.getSampleIdentifierById(sampleId);
+        QString projectName = identifier.projectName;
+        QString batchCode = identifier.batchCode;
+        QString shortCode = identifier.shortCode;
+        QString groupKey  = QString("%1-%2-%3").arg(projectName).arg(batchCode).arg(shortCode);
+
+        SampleGroup &group = batchResults[groupKey];
+        group.projectName = projectName;
+        group.batchCode   = batchCode;
+        group.shortCode   = shortCode;
+
+        group.sampleDatas.append(singleSample);
+        if (group.sampleDatas.size() == 1) {
+            group.sampleDatas[0].bestInGroup = true;
+        }
+    }
 
     return batchResults;
 }

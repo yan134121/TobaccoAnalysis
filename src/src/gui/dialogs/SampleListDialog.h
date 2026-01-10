@@ -23,6 +23,7 @@ private:
     void setupModels();
     void loadBigSamples();
     void loadSmallSamples();
+    void loadSmallRawSamples();
     void loadChromSamples();
     void loadProcessBigSamples();
     // 获取当前页签对应的表格视图与模型
@@ -33,6 +34,7 @@ private:
     bool currentIsProcessBranch() const;
     int countBigPoints(int sampleId);
     int countSmallPoints(int sampleId);
+    int countSmallRawPoints(int sampleId);
     int countChromPoints(int sampleId);
     int countProcessBigPoints(int sampleId);
     // 构建当前页签的三级索引与搜索缓存
@@ -59,6 +61,7 @@ private:
     Ui::SampleListDialog* ui;
     QStandardItemModel* m_bigModel;
     QStandardItemModel* m_smallModel;
+    QStandardItemModel* m_smallRawModel;
     QStandardItemModel* m_chromModel;
     QStandardItemModel* m_processBigModel;
     AppInitializer* m_appInitializer = nullptr; // 保存应用初始化器，用于创建工序大热重处理对话框

@@ -85,7 +85,7 @@ void ModelListDialog::on_deleteButton_clicked()
 
     // 二次确认，提示会级联删除批次和样本数据
     QString text = QString("将按烟牌号（项目名） [%1] 删除其下所有批次与样本数据。\n"
-                           "包含：大热重、小热重、色谱数据。\n"
+                           "包含：大热重、小热重、小热重（原始数据）、色谱数据。\n"
                            "操作不可撤销，是否继续？").arg(brandName);
     auto ret = QMessageBox::question(this, "级联删除确认", text, QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ret != QMessageBox::Yes) return;

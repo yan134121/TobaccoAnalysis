@@ -72,7 +72,7 @@ void SampleDataTableDialog::loadSampleData(const struct NavigatorNodeInfo& info)
             m_tableWidget->setItem(i, 0, new QTableWidgetItem(QString::number(curveData[i].x())));
             m_tableWidget->setItem(i, 1, new QTableWidgetItem(QString::number(curveData[i].y())));
         }
-    } else if (dataType == "小热重") {
+    } else if (dataType == "小热重" || dataType == "小热重（原始数据）") {
         // 设置表头
         m_tableWidget->setColumnCount(2);
         QStringList headers;

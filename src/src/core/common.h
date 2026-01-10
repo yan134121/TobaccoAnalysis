@@ -322,6 +322,7 @@ Q_DECLARE_METATYPE(DifferenceResultRow)
 enum DataType {
     TG_BIG,
     TG_SMALL,
+    TG_SMALL_RAW,
     CHROMATOGRAM,
     PROCESS_TG_BIG
 };

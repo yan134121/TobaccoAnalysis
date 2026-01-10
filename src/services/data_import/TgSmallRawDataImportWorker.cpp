@@ -238,6 +238,15 @@ void TgSmallRawDataImportWorker::run()
     AppInitializer* appInitializer = m_appInitializer;
     locker.unlock();
 
+    DEBUG_LOG << "小热重（原始数据）导入开始:"
+              << "filePath=" << filePath
+              << "projectName=" << projectName
+              << "batchCode=" << batchCode
+              << "parallelNo=" << parallelNo
+              << "detectDate=" << detectDate.toString(Qt::ISODate)
+              << "temperatureColumn=" << temperatureColumn
+              << "dtgColumn=" << dtgColumn;
+
     if (!initThreadDatabase()) {
         return;
     }
@@ -269,6 +278,8 @@ void TgSmallRawDataImportWorker::run()
         return;
     }
     QStringList sheetNames = xlsx.sheetNames();
+    DEBUG_LOG << "Excel工作表数量:" << sheetNames.size()
+              << "sheetNames=" << sheetNames;
     if (sheetNames.isEmpty()) {
         emit importError("Excel文件不包含任何工作表");
         closeThreadDatabase();
@@ -294,6 +305,9 @@ void TgSmallRawDataImportWorker::run()
         emit progressMessage(tr("处理工作表: %1").arg(sheetName));
 
         xlsx.selectSheet(sheetName);
+        DEBUG_LOG << "开始处理工作表:" << sheetName
+                  << "temperatureColumn=" << temperatureColumn
+                  << "dtgColumn=" << dtgColumn;
         QString shortCode = extractShortCodeFromSheetName(sheetName);
         if (shortCode.isEmpty()) {
             WARNING_LOG << "无法从工作表名称中提取短码:" << sheetName;
@@ -317,6 +331,10 @@ void TgSmallRawDataImportWorker::run()
         int row = 2;
         int maxEmptyRows = 5;
         int emptyRowCount = 0;
+        int nullValueRows = 0;
+        int nonNumericRows = 0;
+        int loggedNullRows = 0;
+        int loggedNonNumericRows = 0;
 
         while (emptyRowCount < maxEmptyRows && row < 1000) {
             {
@@ -332,6 +350,15 @@ void TgSmallRawDataImportWorker::run()
             std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
 
             if (!cellTemp || !cellDtg || cellTemp->value().isNull() || cellDtg->value().isNull()) {
+                if (loggedNullRows < 5) {
+                    DEBUG_LOG << "空单元格或缺失单元格，跳过行:" << row
+                              << "tempCellValid=" << static_cast<bool>(cellTemp)
+                              << "dtgCellValid=" << static_cast<bool>(cellDtg)
+                              << "tempNull=" << (cellTemp ? cellTemp->value().isNull() : true)
+                              << "dtgNull=" << (cellDtg ? cellDtg->value().isNull() : true);
+                    loggedNullRows++;
+                }
+                nullValueRows++;
                 emptyRowCount++;
                 row++;
                 continue;
@@ -344,6 +371,13 @@ void TgSmallRawDataImportWorker::run()
             double temperature = cellTemp->value().toDouble(&ok1);
             double dtgValue = cellDtg->value().toDouble(&ok2);
             if (!ok1 || !ok2) {
+                if (loggedNonNumericRows < 5) {
+                    DEBUG_LOG << "非数字数据，跳过行:" << row
+                              << "temperatureValue=" << cellTemp->value().toString()
+                              << "dtgValue=" << cellDtg->value().toString();
+                    loggedNonNumericRows++;
+                }
+                nonNumericRows++;
                 row++;
                 continue;
             }
@@ -361,9 +395,16 @@ void TgSmallRawDataImportWorker::run()
         }
 
         if (dataList.isEmpty()) {
-            WARNING_LOG << "工作表未读取到有效数据:" << sheetName;
+            WARNING_LOG << "工作表未读取到有效数据:" << sheetName
+                        << "nullValueRows=" << nullValueRows
+                        << "nonNumericRows=" << nonNumericRows;
             continue;
         }
+        DEBUG_LOG << "工作表解析完成:" << sheetName
+                  << "sampleId=" << sampleId
+                  << "有效数据行数=" << dataList.size()
+                  << "nullValueRows=" << nullValueRows
+                  << "nonNumericRows=" << nonNumericRows;
         m_tgSmallRawDataDao->removeBySampleId(sampleId);
         if (!m_tgSmallRawDataDao->insertBatch(dataList)) {
             WARNING_LOG << "批量插入小热重（原始数据）失败:" << sheetName;
@@ -374,6 +415,9 @@ void TgSmallRawDataImportWorker::run()
         totalDataCount += dataList.size();
     }
 
+    DEBUG_LOG << "小热重（原始数据）导入完成:"
+              << "successSheets=" << successCount
+              << "totalDataCount=" << totalDataCount;
     emit importFinished(successCount, totalDataCount);
     closeThreadDatabase();
 }

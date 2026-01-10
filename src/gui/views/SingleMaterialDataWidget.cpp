@@ -1171,14 +1171,14 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
     QFormLayout* columnFormLayout = new QFormLayout();
 
     QSpinBox temperatureColumnSpinBox;
-    temperatureColumnSpinBox.setRange(1, 1000);
+    temperatureColumnSpinBox.setRange(0, 1000);
     temperatureColumnSpinBox.setValue(1);
-    columnFormLayout->addRow(tr("温度列(从1开始):"), &temperatureColumnSpinBox);
+    columnFormLayout->addRow(tr("X轴列(从0开始，0表示序号):"), &temperatureColumnSpinBox);
 
     QSpinBox dtgColumnSpinBox;
     dtgColumnSpinBox.setRange(1, 1000);
     dtgColumnSpinBox.setValue(3);
-    columnFormLayout->addRow(tr("DTG列(从1开始):"), &dtgColumnSpinBox);
+    columnFormLayout->addRow(tr("Y轴列(从1开始):"), &dtgColumnSpinBox);
 
     columnLayout->addLayout(columnFormLayout);
 
@@ -1287,7 +1287,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
                         QString detailedMsg = tr("导入失败：未从Excel文件中提取到有效数据。\n\n可能的原因：\n"
                                               "1. Excel文件格式不正确\n"
                                               "2. 工作表名称不包含有效的样本编号\n"
-                                              "3. 温度列或DTG列设置错误\n"
+                                              "3. X轴列或Y轴列设置错误\n"
                                               "4. 数据不是有效的数字格式\n\n"
                                               "请检查Excel文件与列设置后重试。");
                         QMessageBox::warning(this, tr("导入错误"), detailedMsg);

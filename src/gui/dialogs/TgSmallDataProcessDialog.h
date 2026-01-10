@@ -25,7 +25,7 @@
 #include "data_access/NavigatorDAO.h"
 #include "gui/views/ChartView.h"
 #include "TgSmallParameterSettingsDialog.h"
-#include "src/services/DataProcessingService.h"
+#include "services/DataProcessingService.h"
 #include "core/common.h"
 #include "AppInitializer.h"
 #include "core/singletons/SampleSelectionManager.h"

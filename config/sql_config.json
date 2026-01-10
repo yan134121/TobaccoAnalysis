@@ -53,6 +53,28 @@
         "description": "根据样品ID删除小热重数据"
       }
     },
+    "TgSmallRawDataDAO": {
+      "insert": {
+        "sql": "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "插入小热重（原始数据）记录"
+      },
+      "insert_batch": {
+        "sql": "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
+        "description": "批量插入小热重（原始数据）记录"
+      },
+      "select_by_sample_id": {
+        "sql": "SELECT * FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY id, temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重（原始数据）"
+      },
+      "delete_by_sample_id": {
+        "sql": "DELETE FROM tg_small_raw_data WHERE sample_id = :sample_id",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID删除小热重（原始数据）"
+      }
+    },
     "TgBigDataDAO": {
       "insert": {
         "sql": "INSERT INTO tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",

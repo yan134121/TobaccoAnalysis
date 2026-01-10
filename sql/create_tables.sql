@@ -101,6 +101,21 @@ CREATE TABLE IF NOT EXISTS tg_small_data (
   INDEX idx_smalldata_sample (sample_id, serial_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 5.1 小热重（原始数据）
+CREATE TABLE IF NOT EXISTS tg_small_raw_data (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  sample_id INT NOT NULL COMMENT '样品ID',
+  serial_no INT NOT NULL COMMENT '原始数据序号',
+  temperature DOUBLE COMMENT '温度',
+  weight DOUBLE COMMENT '重量 (克)',
+  tg_value DOUBLE COMMENT '热重值',
+  dtg_value DOUBLE COMMENT '热重值微分',
+  source_filename VARCHAR(255) COMMENT '原始文件名',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (sample_id) REFERENCES single_tobacco_sample(id) ON DELETE CASCADE,
+  INDEX idx_smallrawdata_sample (sample_id, serial_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 6. 色谱数据
 CREATE TABLE IF NOT EXISTS chromatography_data (
   id INT AUTO_INCREMENT PRIMARY KEY,

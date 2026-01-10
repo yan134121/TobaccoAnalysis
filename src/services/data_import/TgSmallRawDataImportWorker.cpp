@@ -201,7 +201,7 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
         sampleData.getShortCode(),
         QString::number(sampleData.getParallelNo())));
 
-    int newId = m_singleTobaccoSampleDao->create(newSample);
+    int newId = m_singleTobaccoSampleDao->insert(newSample);
     if (newId > 0) {
         DEBUG_LOG << "成功创建小热重（原始数据）样本，ID:" << newId;
         return newId;

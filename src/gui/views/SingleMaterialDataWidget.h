@@ -24,6 +24,7 @@
 // 数据导入服务
 #include "services/data_import/TgBigDataImportWorker.h"
 #include "services/data_import/TgSmallDataImportWorker.h"
+#include "services/data_import/TgSmallRawDataImportWorker.h"
 #include "services/data_import/ProcessTgBigDataImportWorker.h"
 #include "services/data_import/ChromatographDataImportWorker.h"
 
@@ -63,7 +64,7 @@ signals:
     void statusMessage(const QString& message, int timeout = 3000);
 
     // 新增信号：数据导入完成，携带导入类别，用于自动刷新导航树（中文注释）
-    // 可选值示例："TG_BIG"、"TG_SMALL"、"CHROMATOGRAPHY"、"PROCESS_TG_BIG"
+    // 可选值示例："TG_BIG"、"TG_SMALL"、"TG_SMALL_RAW"、"CHROMATOGRAPHY"、"PROCESS_TG_BIG"
     void dataImportFinished(const QString& category);
 
 private slots:
@@ -93,6 +94,7 @@ private slots:
 
     void on_importTgBigDataButton_clicked();
     void on_importTgSmallDataButton_clicked();
+    void on_importTgSmallRawDataButton_clicked();
     void on_importChromatographDataButton_clicked();
     void on_importProcessTgBigDataButton_clicked();
 
@@ -113,6 +115,7 @@ private:
     
     // 小热重数据导入工作线程
     TgSmallDataImportWorker* m_tgSmallDataImportWorker = nullptr;
+    TgSmallRawDataImportWorker* m_tgSmallRawDataImportWorker = nullptr;
     // 大热重数据导入工作线程
     TgBigDataImportWorker* m_tgBigDataImportWorker = nullptr;
     //工序大热重数据导入工作线程

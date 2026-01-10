@@ -346,10 +346,23 @@
     <string>导入小热重</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="importChromatographDataButton">
+  <widget class="QPushButton" name="importTgSmallRawDataButton">
    <property name="geometry">
     <rect>
      <x>340</x>
+     <y>440</y>
+     <width>141</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>导入小热重（原始数据）</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="importChromatographDataButton">
+   <property name="geometry">
+    <rect>
+     <x>490</x>
      <y>440</y>
      <width>91</width>
      <height>41</height>
@@ -362,7 +375,7 @@
   <widget class="QPushButton" name="importProcessTgBigDataButton">
    <property name="geometry">
     <rect>
-     <x>440</x>
+     <x>590</x>
      <y>440</y>
      <width>121</width>
      <height>41</height>
@@ -398,6 +411,7 @@
   <zorder>openSampleListButton</zorder>
   <zorder>importTgBigDataButton</zorder>
   <zorder>importTgSmallDataButton</zorder>
+  <zorder>importTgSmallRawDataButton</zorder>
   <zorder>importChromatographDataButton</zorder>
   <zorder>importProcessTgBigDataButton</zorder>
   <zorder>tableView</zorder>

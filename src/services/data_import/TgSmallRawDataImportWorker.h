@@ -24,7 +24,7 @@ public:
                        const QDate& detectDate,
                        int parallelNo,
                        int temperatureColumn,
-                       int dtgColumn,
+                       int tgColumn,
                        AppInitializer* appInitializer);
 
     void stop();
@@ -50,7 +50,7 @@ private:
     QDate m_detectDate;
     int m_parallelNo = 1;
     int m_temperatureColumn = 1;
-    int m_dtgColumn = 3;
+    int m_tgColumn = 3;
     AppInitializer* m_appInitializer = nullptr;
     bool m_stopped = false;
 

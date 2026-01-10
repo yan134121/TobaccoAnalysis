@@ -37,7 +37,7 @@ void TgSmallRawDataImportWorker::setParameters(const QString& filePath,
                                               const QDate& detectDate,
                                               int parallelNo,
                                               int temperatureColumn,
-                                              int dtgColumn,
+                                              int tgColumn,
                                               AppInitializer* appInitializer)
 {
     QMutexLocker locker(&m_mutex);
@@ -47,7 +47,7 @@ void TgSmallRawDataImportWorker::setParameters(const QString& filePath,
     m_detectDate = detectDate;
     m_parallelNo = parallelNo;
     m_temperatureColumn = temperatureColumn;
-    m_dtgColumn = dtgColumn;
+    m_tgColumn = tgColumn;
     m_appInitializer = appInitializer;
     m_stopped = false;
 }
@@ -233,7 +233,7 @@ void TgSmallRawDataImportWorker::run()
     QString batchCode = m_batchCode;
     int parallelNo = m_parallelNo;
     int temperatureColumn = m_temperatureColumn;
-    int dtgColumn = m_dtgColumn;
+    int tgColumn = m_tgColumn;
     QDate detectDate = m_detectDate;
     AppInitializer* appInitializer = m_appInitializer;
     locker.unlock();
@@ -245,7 +245,7 @@ void TgSmallRawDataImportWorker::run()
               << "parallelNo=" << parallelNo
               << "detectDate=" << detectDate.toString(Qt::ISODate)
               << "temperatureColumn=" << temperatureColumn
-              << "dtgColumn=" << dtgColumn;
+              << "tgColumn=" << tgColumn;
 
     if (!initThreadDatabase()) {
         return;
@@ -257,7 +257,7 @@ void TgSmallRawDataImportWorker::run()
         return;
     }
 
-    if (temperatureColumn < 0 || dtgColumn <= 0) {
+    if (temperatureColumn < 0 || tgColumn <= 0) {
         emit importError("X轴列或Y轴列设置无效，请设置为0或大于0的列号");
         closeThreadDatabase();
         return;
@@ -308,7 +308,7 @@ void TgSmallRawDataImportWorker::run()
         xlsx.selectSheet(sheetName);
         DEBUG_LOG << "开始处理工作表:" << sheetName
                   << "temperatureColumn=" << temperatureColumn
-                  << "dtgColumn=" << dtgColumn
+                  << "tgColumn=" << tgColumn
                   << "useSerialNoAsX=" << useSerialNoAsX;
         QString shortCode = extractShortCodeFromSheetName(sheetName);
         if (shortCode.isEmpty()) {
@@ -348,20 +348,20 @@ void TgSmallRawDataImportWorker::run()
                 }
             }
 
-            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
+            std::shared_ptr<QXlsx::Cell> cellTg = xlsx.cellAt(row, tgColumn);
             std::shared_ptr<QXlsx::Cell> cellTemp;
             if (!useSerialNoAsX) {
                 cellTemp = xlsx.cellAt(row, temperatureColumn);
             }
 
-            if (!cellDtg || cellDtg->value().isNull() ||
+            if (!cellTg || cellTg->value().isNull() ||
                 (!useSerialNoAsX && (!cellTemp || cellTemp->value().isNull()))) {
                 if (loggedNullRows < 5) {
                     DEBUG_LOG << "空单元格或缺失单元格，跳过行:" << row
                               << "tempCellValid=" << static_cast<bool>(cellTemp)
-                              << "dtgCellValid=" << static_cast<bool>(cellDtg)
+                              << "tgCellValid=" << static_cast<bool>(cellTg)
                               << "tempNull=" << (cellTemp ? cellTemp->value().isNull() : true)
-                              << "dtgNull=" << (cellDtg ? cellDtg->value().isNull() : true);
+                              << "tgNull=" << (cellTg ? cellTg->value().isNull() : true);
                     loggedNullRows++;
                 }
                 nullValueRows++;
@@ -376,12 +376,12 @@ void TgSmallRawDataImportWorker::run()
             bool ok2 = false;
             double temperature = useSerialNoAsX ? static_cast<double>(dataList.size())
                                                 : cellTemp->value().toDouble(&ok1);
-            double dtgValue = cellDtg->value().toDouble(&ok2);
+            double tgValue = cellTg->value().toDouble(&ok2);
             if ((!useSerialNoAsX && !ok1) || !ok2) {
                 if (loggedNonNumericRows < 5) {
                     DEBUG_LOG << "非数字数据，跳过行:" << row
                               << "temperatureValue=" << (cellTemp ? cellTemp->value().toString() : QString())
-                              << "dtgValue=" << cellDtg->value().toString();
+                              << "tgValue=" << cellTg->value().toString();
                     loggedNonNumericRows++;
                 }
                 nonNumericRows++;
@@ -394,8 +394,8 @@ void TgSmallRawDataImportWorker::run()
             data.setSerialNo(dataList.size());
             data.setTemperature(temperature);
             data.setWeight(0.0);
-            data.setTgValue(0.0);
-            data.setDtgValue(dtgValue);
+            data.setTgValue(tgValue);
+            data.setDtgValue(0.0);
             data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
             dataList.append(data);
             row++;

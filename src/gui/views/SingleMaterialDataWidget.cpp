@@ -1175,10 +1175,10 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
     temperatureColumnSpinBox.setValue(1);
     columnFormLayout->addRow(tr("X轴列(从0开始，0表示序号):"), &temperatureColumnSpinBox);
 
-    QSpinBox dtgColumnSpinBox;
-    dtgColumnSpinBox.setRange(1, 1000);
-    dtgColumnSpinBox.setValue(3);
-    columnFormLayout->addRow(tr("Y轴列(从1开始):"), &dtgColumnSpinBox);
+    QSpinBox tgColumnSpinBox;
+    tgColumnSpinBox.setRange(1, 1000);
+    tgColumnSpinBox.setValue(3);
+    columnFormLayout->addRow(tr("热重值列(从1开始):"), &tgColumnSpinBox);
 
     columnLayout->addLayout(columnFormLayout);
 
@@ -1193,7 +1193,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
     }
 
     int temperatureColumn = temperatureColumnSpinBox.value();
-    int dtgColumn = dtgColumnSpinBox.value();
+    int tgColumn = tgColumnSpinBox.value();
 
     QDialog inputDialog(this);
     inputDialog.setWindowTitle(tr("输入小热重（原始数据）样本信息"));
@@ -1310,7 +1310,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
     }
 
     m_tgSmallRawDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo,
-                                                temperatureColumn, dtgColumn, m_appInitializer);
+                                                temperatureColumn, tgColumn, m_appInitializer);
     m_tgSmallRawDataImportWorker->start();
 
     emit statusMessage(tr("正在后台导入小热重（原始数据）..."), 3000);

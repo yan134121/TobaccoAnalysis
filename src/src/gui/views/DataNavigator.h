@@ -136,7 +136,6 @@ public:
 
     QTreeWidgetItem* m_bigTgRoot;
     QTreeWidgetItem* m_smallTgRoot;
-    QTreeWidgetItem* m_smallTgRawRoot;
     QTreeWidgetItem* m_chromRoot;
 
 

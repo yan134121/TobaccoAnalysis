@@ -25,11 +25,8 @@
 #include <QStyle>
 #include <QStyleOptionViewItem>
 
-TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent,
-                                                   AppInitializer* appInitializer,
-                                                   DataNavigator *mainNavigator,
-                                                   const QString& dataTypeName) :
-    QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator), m_dataTypeName(dataTypeName)
+TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
+    QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
 {
     // 安全检查
     if (!m_appInitializer) {
@@ -40,8 +37,7 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent,
     // 【关键】使用传入的 appInitializer 来获取服务
     m_processingService = m_appInitializer->getDataProcessingService();
 
-    setProperty("dataTypeName", m_dataTypeName);
-    setWindowTitle(tr("%1数据处理").arg(m_dataTypeName));
+    setWindowTitle(tr("小热重数据处理"));
     // setMinimumSize(1200, 800);
     
     // resize(1400, 900);
@@ -73,9 +69,9 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent,
     // DEBUG_LOG << "TgSmallDataProcessDialog::TgSmallDataProcessDialog - Connections set up";
     loadNavigatorData();
 
-    // 首次打开时同步主导航已选中的小热重样本，并立即绘制
+    // 首次打开时同步主导航已选中的“小热重”样本，并立即绘制
     {
-        QSet<int> preselected = SampleSelectionManager::instance()->selectedIdsByType(m_dataTypeName);
+        QSet<int> preselected = SampleSelectionManager::instance()->selectedIdsByType(QStringLiteral("小热重"));
         if (!preselected.isEmpty()) {
             m_suppressItemChanged = true; // 防止触发 onItemChanged 递归
             for (int sampleId : preselected) {
@@ -275,7 +271,7 @@ void TgSmallDataProcessDialog::showSelectedSamplesStatistics()
     QMap<int, QString> selectedSamples = getSelectedSamples();
     int count = selectedSamples.size();
     
-    QString message = tr("当前选中的%1样本数量: %2\n\n").arg(m_dataTypeName).arg(count);
+    QString message = tr("当前选中的小热重样本数量: %1\n\n").arg(count);
     
     if (count > 0) {
         message += tr("选中的样本列表:\n");
@@ -285,10 +281,10 @@ void TgSmallDataProcessDialog::showSelectedSamplesStatistics()
             message += tr("ID: %1, 名称: %2\n").arg(i.key()).arg(i.value());
         }
     } else {
-        message += tr("没有选中任何%1样本").arg(m_dataTypeName);
+        message += tr("没有选中任何小热重样本");
     }
-
-    QMessageBox::information(this, tr("%1样本统计").arg(m_dataTypeName), message);
+    
+    QMessageBox::information(this, tr("小热重样本统计"), message);
 }
 
 void TgSmallDataProcessDialog::selectSample(int sampleId, const QString& sampleName)
@@ -367,12 +363,12 @@ void TgSmallDataProcessDialog::selectSample(int sampleId, const QString& sampleN
                             // 设置复选框为选中状态
                             sampleItem->setCheckState(0, Qt::Checked);
                             
-                            // 确保导航树标题显示为当前数据类型
-                            m_leftNavigator->setHeaderLabel(tr("%1 - 样本导航").arg(m_dataTypeName));
+                            // 确保导航树标题显示为"小热重 - 样本导航"
+                            m_leftNavigator->setHeaderLabel(tr("小热重 - 样本导航"));
                             
-                            DEBUG_LOG << m_dataTypeName << "样本已选中:" << sampleId << sampleName;
+                            DEBUG_LOG << "小热重样本已选中:" << sampleId << sampleName;
                             
-                            // 当前界面内部的选中仅控制绘图显示，不回写到主导航或全局
+                            // 小热重界面内部的选中仅控制绘图显示，不回写到主导航或全局
                         } catch (const std::exception& e) {
                             DEBUG_LOG << "处理样本选择异常:" << e.what();
                         } catch (...) {
@@ -448,7 +444,7 @@ void TgSmallDataProcessDialog::addSampleCurve(int sampleId, const QString& sampl
                             m_suppressItemChanged = true;
                             sampleItem->setCheckState(0, Qt::Checked);
                             m_suppressItemChanged = false;
-                            DEBUG_LOG << m_dataTypeName << "样本曲线已添加:" << sampleId << sampleName;
+                            DEBUG_LOG << "小热重样本曲线已添加:" << sampleId << sampleName;
                             return;
                         } catch (const std::exception& e) {
                             DEBUG_LOG << "设置样本选中状态异常:" << e.what();
@@ -531,7 +527,7 @@ void TgSmallDataProcessDialog::drawSelectedSampleCurves()
                     QVariantMap sampleInfo;
                     
                     try {
-                        points = m_navigatorDao.getSampleCurveData(sampleId, m_dataTypeName, error);
+                        points = m_navigatorDao.getSampleCurveData(sampleId, "小热重", error);
                         if (!error.isEmpty()) {
                             DEBUG_LOG << "获取样本曲线数据出错:" << error;
                         }
@@ -794,7 +790,7 @@ void TgSmallDataProcessDialog::setupUI()
     tab1Layout->addLayout(m_buttonLayout);
 
     // 将 Tab1 添加到 tabWidget
-    tabWidget->addTab(tab1Widget, tr("%1数据处理").arg(m_dataTypeName));
+    tabWidget->addTab(tab1Widget, tr("小热重数据处理"));
 
     // // --- Tab2 和 Tab3 ---
     // tab2Widget = new QWidget();
@@ -827,7 +823,7 @@ void TgSmallDataProcessDialog::setupLeftNavigator()
 
     // 创建（隐藏的）导航树实例，不加入到界面，仅供内部函数保留兼容（可选）
     m_leftNavigator = new QTreeWidget();
-    m_leftNavigator->setHeaderLabel(tr("%1 - 样本导航").arg(m_dataTypeName));
+    m_leftNavigator->setHeaderLabel(tr("小热重 - 样本导航"));
     m_leftNavigator->setMinimumWidth(250);
     m_leftNavigator->setAlternatingRowColors(true);
     m_leftNavigator->header()->setStretchLastSection(true);
@@ -1020,7 +1016,7 @@ void TgSmallDataProcessDialog::setupConnections()
     // 首次出现的新样本节点默认勾选并显示曲线。
     connect(SampleSelectionManager::instance(), &SampleSelectionManager::selectionChangedByType,
             this, [this](int sampleId, const QString& dataType, bool selected, const QString& origin){
-                if (dataType != m_dataTypeName) return;
+                if (dataType != QStringLiteral("小热重")) return;
                 if (selected) {
                     // 加入“被选中样本”集合；首次出现则默认可见（勾选）并绘制曲线
                     QString name = m_selectedSamples.value(sampleId);
@@ -1059,7 +1055,7 @@ void TgSmallDataProcessDialog::setupConnections()
 void TgSmallDataProcessDialog::onDrawAllSelectedCurvesClicked()
 {
     // 从全局选择管理器获取“小热重”类型已选样本，全部设为可见并绘制
-    QSet<int> ids = SampleSelectionManager::instance()->selectedIdsByType(m_dataTypeName);
+    QSet<int> ids = SampleSelectionManager::instance()->selectedIdsByType(QStringLiteral("小热重"));
     m_visibleSamples = ids;
     // 确保 m_selectedSamples 包含名称
     for (int sampleId : ids) {
@@ -1075,7 +1071,7 @@ void TgSmallDataProcessDialog::onDrawAllSelectedCurvesClicked()
 void TgSmallDataProcessDialog::onUnselectAllSamplesClicked()
 {
     // 清空全局选择管理器中“小热重”类型的所有样本，同时清空本界面的可见与选中集合
-    const QString type = m_dataTypeName;
+    const QString type = QStringLiteral("小热重");
     QSet<int> ids = SampleSelectionManager::instance()->selectedIdsByType(type);
     for (int sampleId : ids) {
         SampleSelectionManager::instance()->setSelectedWithType(sampleId, type, false, QStringLiteral("Dialog-UnselectAll"));
@@ -1183,7 +1179,7 @@ void TgSmallDataProcessDialog::removeSelectedListItem(int sampleId)
 void TgSmallDataProcessDialog::prefetchCurveIfNeeded(int sampleId)
 {
     if (m_curveCache.contains(sampleId)) return;
-    QString dataType = m_dataTypeName;
+    QString dataType = QStringLiteral("小热重");
     auto future = QtConcurrent::run([this, sampleId, dataType]{
         QString error;
         return m_navigatorDao.getSampleCurveData(sampleId, dataType, error);
@@ -1628,7 +1624,7 @@ void TgSmallDataProcessDialog::onSelectAllSamplesInBatch(const QString& projectN
                         QTreeWidgetItem* sampleItem = batchItem->child(k);
                         if (sampleItem && sampleItem->data(0, Qt::UserRole).toInt() == sample.sampleId) {
                             sampleItem->setCheckState(0, Qt::Checked);
-                            DEBUG_LOG << "已勾选" << m_dataTypeName << "样本复选框:" << sample.sampleId;
+                            DEBUG_LOG << "已勾选小热重样本复选框:" << sample.sampleId;
                             break;
                         }
                     }
@@ -1661,7 +1657,7 @@ void TgSmallDataProcessDialog::onSelectAllSamplesInBatch(const QString& projectN
                                  .arg(totalSamples));
     } else if (totalSamples == 0) {
         QMessageBox::warning(this, tr("未找到有效样本"),
-                             tr("批次下没有可添加的%1类型样本").arg(m_dataTypeName));
+                             tr("批次下没有可添加的小热重类型样本"));
     } else {
         QMessageBox::information(this, tr("无新样本可添加"),
                                  tr("批次中的所有有效样本(%1 个)已经添加")
@@ -1696,7 +1692,7 @@ void TgSmallDataProcessDialog::loadNavigatorData()
 void TgSmallDataProcessDialog::loadNavigatorDataFromDatabase()
 {
     // 仅获取“小热重”数据类型的样本，并过滤主导航已选中的样本
-    m_smallTgSamples = m_sampleDao.getSamplesByDataType(m_dataTypeName);
+    m_smallTgSamples = m_sampleDao.getSamplesByDataType("小热重");
 
     // 按项目分组
     QMap<QString, QTreeWidgetItem*> projectItems;
@@ -1783,7 +1779,7 @@ void TgSmallDataProcessDialog::loadNavigatorDataFromMainNavigator()
                         NavigatorNodeInfo nodeInfo = nodeData.value<NavigatorNodeInfo>();
                         
                         if (nodeInfo.type == NavigatorNodeInfo::DataType && 
-                             nodeInfo.dataType == m_dataTypeName) {
+                             nodeInfo.dataType == "小热重") {
                             
                             // 遍历样本节点
                             for (int m = 0; m < dataTypeItem->childCount(); ++m) {
@@ -1914,9 +1910,9 @@ void TgSmallDataProcessDialog::onSampleItemClicked(QTreeWidgetItem *item, int co
         loadSampleCurve(sampleId);
         
         // 确保导航树标题显示为"小热重 - 样本导航"
-        m_leftNavigator->setHeaderLabel(tr("%1 - 样本导航").arg(m_dataTypeName));
+        m_leftNavigator->setHeaderLabel(tr("小热重 - 样本导航"));
         
-        DEBUG_LOG << m_dataTypeName << "样本已选中:" << sampleId << sampleFullName;
+        DEBUG_LOG << "小热重样本已选中:" << sampleId << sampleFullName;
     }
 }
 
@@ -2065,13 +2061,9 @@ void TgSmallDataProcessDialog::recalculateAndUpdatePlot()
               << idStrList.join(", ");
 
     // --- 3. 异步调用 Service 层 (使用新数据结构 BatchGroupData) ---
-    auto runFunc = (m_dataTypeName == QStringLiteral("小热重（原始数据）"))
-        ? &DataProcessingService::runTgSmallRawPipelineForMultiple
-        : &DataProcessingService::runTgSmallPipelineForMultiple;
-
     QFuture<BatchGroupData> future = QtConcurrent::run(
         m_processingService,
-        runFunc,
+        &DataProcessingService::runTgSmallPipelineForMultiple,
         sampleIds,
         m_currentParams
     );
@@ -2426,7 +2418,7 @@ void TgSmallDataProcessDialog::onItemChanged(QTreeWidgetItem *item, int column)
     int clickedSampleId = item->data(0, Qt::UserRole).toInt();
     bool isChecked = (item->checkState(0) == Qt::Checked);
 
-    // 根据用户在当前导航的勾选，仅影响曲线显示，不改全局状态
+    // 根据用户在小热重导航的勾选，仅影响曲线显示，不改全局状态
     QString sampleFullName = buildSampleDisplayName(clickedSampleId);
     if (isChecked) {
         // 加入本地选中集合并绘制曲线
@@ -2465,13 +2457,13 @@ void TgSmallDataProcessDialog::onItemChanged(QTreeWidgetItem *item, int column)
                     selectedSamples.append(qMakePair(sampleId, sampleFullName));
                     
                     // 提取样本类型并统计
-                    QString sampleType = m_dataTypeName; // 默认为当前类型
+                    QString sampleType = "小热重"; // 默认为小热重类型
                     
                     // 尝试从样本名称中提取更详细的类型信息
                     if (sampleFullName.contains("大热重")) {
                         sampleType = "大热重";
-                    } else if (sampleFullName.contains(m_dataTypeName)) {
-                        sampleType = m_dataTypeName;
+                    } else if (sampleFullName.contains("小热重")) {
+                        sampleType = "小热重";
                     } else if (sampleFullName.contains("色谱")) {
                         sampleType = "色谱";
                     }
@@ -2717,12 +2709,12 @@ QTreeWidgetItem* TgSmallDataProcessDialog::findSampleItemById(int sampleId) cons
     return nullptr;
 }
 
-// 处理主导航样本选中状态变化，仅对当前数据类型生效，动态增删导航树节点与曲线
+// 处理主导航样本选中状态变化，仅对 dataType=="小热重" 生效，动态增删导航树节点与曲线
 void TgSmallDataProcessDialog::onMainNavigatorSampleSelectionChanged(int sampleId, const QString& sampleName, const QString& dataType, bool selected)
 {
     try {
-        // 仅处理当前数据类型
-        if (dataType != m_dataTypeName) {
+        // 仅处理小热重数据类型
+        if (dataType != QStringLiteral("小热重")) {
             return;
         }
 

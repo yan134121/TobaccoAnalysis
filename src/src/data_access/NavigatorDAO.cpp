@@ -215,11 +215,6 @@ QVector<QPointF> NavigatorDAO::getSampleCurveData(int sampleId, const QString &d
         if (queryString.isEmpty()) {
             queryString = "SELECT temperature, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature";
         }
-    } else if (dataType == "小热重（原始数据）") {
-        queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small_raw").sql;
-        if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature";
-        }
     } else if (dataType == "色谱") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;
         if (queryString.isEmpty()) {
@@ -350,26 +345,6 @@ QStringList NavigatorDAO::getAvailableDataTypesForShortCode(int batchId, const Q
     if (query.exec() && query.next()) {
         if (query.value("count").toInt() > 0) {
             dataTypes.append("小热重");
-        }
-    }
-
-    // 检查小热重（原始数据）
-    sql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "exists_tg_small_raw_by_batch_and_short_code").sql;
-    if (sql.isEmpty()) {
-        sql = R"(
-            SELECT COUNT(*) as count
-            FROM tg_small_raw_data d
-            JOIN single_tobacco_sample s ON d.sample_id = s.id
-            WHERE s.batch_id = :batch_id AND s.short_code = :short_code
-        )";
-    }
-    query.prepare(sql);
-    query.bindValue(":batch_id", batchId);
-    query.bindValue(":short_code", shortCode);
-
-    if (query.exec() && query.next()) {
-        if (query.value("count").toInt() > 0) {
-            dataTypes.append("小热重（原始数据）");
         }
     }
     
@@ -554,7 +529,6 @@ QList<QString> NavigatorDAO::fetchShortCodesForDataType(const QString& dataType,
     QString tableName;
     if (dataType == "大热重") tableName = "tg_big_data";
     else if (dataType == "小热重") tableName = "tg_small_data";
-    else if (dataType == "小热重（原始数据）") tableName = "tg_small_raw_data";
     else if (dataType == "色谱") tableName = "chromatography_data";
     else return shortCodes;
 
@@ -602,8 +576,6 @@ QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchParallelSamplesForShortCo
         // 但如果数据是一次性导入的，可能需要查关联表的字段
     } else if (dataType == "小热重") {
         tableName = "tg_small_data";
-    } else if (dataType == "小热重（原始数据）") {
-        tableName = "tg_small_raw_data";
     } else if (dataType == "色谱") {
         tableName = "chromatography_data";
         // 色谱表可能有独立时间
@@ -897,16 +869,6 @@ bool NavigatorDAO::deleteProjectCascade(const QString& projectName, bool process
                 deletedDataRows += q2.numRowsAffected();
 
                 {
-                    QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_small_raw_by_sample_id").sql;
-                    if (delSql.isEmpty()) {
-                        delSql = "DELETE FROM tg_small_raw_data WHERE sample_id = :sid";
-                    }
-                    q4.prepare(delSql);
-                }
-                q4.bindValue(":sid", sid); if (!q4.exec()) { db.rollback(); error = q4.lastError().text(); return false; }
-                deletedDataRows += q4.numRowsAffected();
-
-                {
                     QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_chrom_by_sample_id").sql;
                     if (delSql.isEmpty()) {
                         delSql = "DELETE FROM chromatography_data WHERE sample_id = :sid";
@@ -1060,14 +1022,6 @@ bool NavigatorDAO::deleteBatchCascade(const QString& projectName, const QString&
             }
             q2.bindValue(":sid", sid); if (!q2.exec()) { db.rollback(); error = q2.lastError().text(); return false; }
             {
-                QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_small_raw_by_sample_id").sql;
-                if (delSql.isEmpty()) {
-                    delSql = "DELETE FROM tg_small_raw_data WHERE sample_id = :sid";
-                }
-                q4.prepare(delSql);
-            }
-            q4.bindValue(":sid", sid); if (!q4.exec()) { db.rollback(); error = q4.lastError().text(); return false; }
-            {
                 QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_chrom_by_sample_id").sql;
                 if (delSql.isEmpty()) {
                     delSql = "DELETE FROM chromatography_data WHERE sample_id = :sid";
@@ -1130,7 +1084,7 @@ bool NavigatorDAO::deleteSampleCascade(int sampleId, bool processBranch, QString
         q5.bindValue(":sid", sampleId);
         if (!q5.exec()) { db.rollback(); error = q5.lastError().text(); return false; }
     } else {
-        QSqlQuery q1(db), q2(db), q3(db), q4(db), q5(db);
+        QSqlQuery q1(db), q2(db), q3(db), q5(db);
         {
             QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_big_by_sample_id").sql;
             if (delSql.isEmpty()) {
@@ -1150,16 +1104,6 @@ bool NavigatorDAO::deleteSampleCascade(int sampleId, bool processBranch, QString
         }
         q2.bindValue(":sid", sampleId);
         if (!q2.exec()) { db.rollback(); error = q2.lastError().text(); return false; }
-
-        {
-            QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_tg_small_raw_by_sample_id").sql;
-            if (delSql.isEmpty()) {
-                delSql = "DELETE FROM tg_small_raw_data WHERE sample_id = :sid";
-            }
-            q4.prepare(delSql);
-        }
-        q4.bindValue(":sid", sampleId);
-        if (!q4.exec()) { db.rollback(); error = q4.lastError().text(); return false; }
 
         {
             QString delSql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", "delete_chrom_by_sample_id").sql;

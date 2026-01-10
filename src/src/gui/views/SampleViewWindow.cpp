@@ -106,8 +106,6 @@ void SampleViewWindow::loadData()
         dataType = DataType::TG_BIG;
     }else if(m_dataType == "小热重"){
         dataType = DataType::TG_SMALL;
-    }else if(m_dataType == "小热重（原始数据）"){
-        dataType = DataType::TG_SMALL_RAW;
     }else if(m_dataType == "色谱"){
         dataType = DataType::CHROMATOGRAM;
     }else{
@@ -132,7 +130,7 @@ void SampleViewWindow::loadData()
     // 3. 设置坐标轴标签并重绘
     if (m_dataType == "大热重") {
         m_chartView->setLabels(tr("数据序号"), tr("热重微分值 (DTG)"));
-    } else if (m_dataType == "小热重" || m_dataType == "小热重（原始数据）") {
+    } else if (m_dataType == "小热重") {
         m_chartView->setLabels(tr("温度 (°C)"), tr("热重微分值 (DTG)"));
     } else if (m_dataType == "色谱") {
         m_chartView->setLabels(tr("保留时间 (min)"), tr("响应值"));

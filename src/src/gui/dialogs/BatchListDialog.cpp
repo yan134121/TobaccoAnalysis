@@ -114,7 +114,7 @@ void BatchListDialog::on_deleteButton_clicked()
 
     // 二次确认，提示会级联删除其下所有样本及数据
     QString text = QString("将删除型号 [%1] 下批次 [%2] 的所有样本与数据。\n"
-                           "包含：大热重、小热重、小热重（原始数据）、色谱数据。\n"
+                           "包含：大热重、小热重、色谱数据。\n"
                            "操作不可撤销，是否继续？").arg(modelCode, batchCode);
     auto ret = QMessageBox::question(this, "级联删除确认", text, QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ret != QMessageBox::Yes) return;

@@ -31,6 +31,7 @@ class QMdiSubWindow;
 class AlgorithmSetting;
 class TgBigDataProcessDialog;
 class TgSmallDataProcessDialog;
+class TgSmallRawDataProcessDialog;
 class ChromatographDataProcessDialog;
 class ProcessTgBigDataProcessDialog;
 class QLineEdit; // 搜索框前置声明（中文注释）
@@ -184,7 +185,7 @@ private:
     // 数据处理对话框
     TgBigDataProcessDialog* tgBigDataProcessDialog;
     TgSmallDataProcessDialog* tgSmallDataProcessDialog;
-    TgSmallDataProcessDialog* tgSmallRawDataProcessDialog;
+    TgSmallRawDataProcessDialog* tgSmallRawDataProcessDialog;
     ChromatographDataProcessDialog* chromatographDataProcessDialog;
     ProcessTgBigDataProcessDialog* processTgBigDataProcessDialog;
     TgBigDifferenceWorkbench* m_tgBigDifferenceWorkbench = nullptr;

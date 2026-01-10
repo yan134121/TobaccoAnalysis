@@ -11,6 +11,7 @@
 #include "gui/dialogs/AlgorithmSetting.h" // 
 #include "gui/dialogs/TgBigDataProcessDialog.h"
 #include "gui/dialogs/TgSmallDataProcessDialog.h"
+#include "gui/dialogs/TgSmallRawDataProcessDialog.h"
 #include "gui/dialogs/ChromatographDataProcessDialog.h"
 #include "gui/dialogs/ProcessTgBigDataProcessDialog.h"
 // #include "WindowManager.h" // 未使用
@@ -1581,21 +1582,21 @@ void MainWindow::onTgSmallRawDataProcessActionTriggered()
         }
     }
 
-    tgSmallRawDataProcessDialog = new TgSmallDataProcessDialog(this, m_appInitializer, m_navigator, QStringLiteral("小热重（原始数据）"));
+    tgSmallRawDataProcessDialog = new TgSmallRawDataProcessDialog(this, m_appInitializer, m_navigator);
     {
         QPixmap px(1, 1);
         px.fill(Qt::transparent);
         tgSmallRawDataProcessDialog->setWindowIcon(QIcon(px));
     }
 
-    connect(tgSmallRawDataProcessDialog, &TgSmallDataProcessDialog::sampleSelected,
+    connect(tgSmallRawDataProcessDialog, &TgSmallRawDataProcessDialog::sampleSelected,
             this, [this](int sampleId, bool selected) {
                 if (m_navigator) {
                     m_navigator->setSampleCheckStateForType(sampleId, QStringLiteral("小热重（原始数据）"), selected);
                 }
             });
 
-    connect(tgSmallRawDataProcessDialog, &TgSmallDataProcessDialog::requestNewTgSmallDifferenceWorkbench,
+    connect(tgSmallRawDataProcessDialog, &TgSmallRawDataProcessDialog::requestNewTgSmallDifferenceWorkbench,
             this, &MainWindow::onCreateTgSmallDifferenceWorkbench);
 
     QMdiSubWindow* subWindow = m_mdiArea->addSubWindow(tgSmallRawDataProcessDialog);

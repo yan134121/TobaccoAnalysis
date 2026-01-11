@@ -10,7 +10,7 @@ QString Clipping::userVisibleName() const {
 QVariantMap Clipping::defaultParameters() const {
     QVariantMap params;
     params["min_x"] = 0.0;
-    params["max_x"] = 1000.0;
+    params["max_x"] = 12000.0;
     return params;
 }
 
@@ -19,7 +19,7 @@ ProcessingResult Clipping::process(const QList<Curve*> &inputCurves, const QVari
     ProcessingResult result;
     bool okMin, okMax;
     double minX = params.value("min_x", 0.0).toDouble(&okMin);
-    double maxX = params.value("max_x", 1000.0).toDouble(&okMax);
+    double maxX = params.value("max_x", 12000.0).toDouble(&okMax);
 
     if (!okMin || !okMax || minX >= maxX) {
         error = "裁剪参数无效：X轴范围不正确。";

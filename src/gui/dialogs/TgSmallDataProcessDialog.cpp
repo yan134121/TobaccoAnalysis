@@ -2265,10 +2265,10 @@ void TgSmallDataProcessDialog::updatePlot()
             return;
         }
 
-        auto updateStagePlot = [&](StageName stageName, ChartView* targetView, const QString& title) {
+        auto updateStagePlot = [&](StageName stageName, ChartView* targetView, const QString& title, const QString& xLabel, const QString& yLabel) {
             if (!targetView) return;
             targetView->clearGraphs();
-            targetView->setLabels(tr("温度 (°C)"), tr("热重微分值 (DTG)"));
+            targetView->setLabels(xLabel, yLabel);
             targetView->setPlotTitle(title);
 
             int colorIndex = 0;
@@ -2289,10 +2289,14 @@ void TgSmallDataProcessDialog::updatePlot()
             targetView->replot();
         };
 
-        updateStagePlot(StageName::Clip, m_chartView2, tr("裁剪数据"));
-        updateStagePlot(StageName::Normalize, m_chartView3, tr("归一化数据"));
-        updateStagePlot(StageName::Smooth, m_chartView4, tr("平滑数据"));
-        updateStagePlot(StageName::Derivative, m_chartView5, tr("微分数据"));
+        // 裁剪数据图：纵坐标标题为"重量"，删除横坐标标题
+        updateStagePlot(StageName::Clip, m_chartView2, tr("裁剪数据"), tr(""), tr("重量"));
+        // 归一化数据图：删除横纵坐标标题
+        updateStagePlot(StageName::Normalize, m_chartView3, tr("归一化数据"), tr(""), tr(""));
+        // 平滑数据图：删除横纵坐标标题
+        updateStagePlot(StageName::Smooth, m_chartView4, tr("平滑数据"), tr(""), tr(""));
+        // 微分数据图：删除横纵坐标标题
+        updateStagePlot(StageName::Derivative, m_chartView5, tr("微分数据"), tr(""), tr(""));
 
         updateLegendPanel();
 

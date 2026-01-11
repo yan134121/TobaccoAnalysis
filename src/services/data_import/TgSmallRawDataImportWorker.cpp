@@ -306,6 +306,12 @@ void TgSmallRawDataImportWorker::run()
         emit progressMessage(tr("处理工作表: %1").arg(sheetName));
 
         xlsx.selectSheet(sheetName);
+        QXlsx::Worksheet* worksheet = xlsx.currentWorksheet();
+        if (!worksheet) {
+            WARNING_LOG << "无法获取工作表对象:" << sheetName;
+            continue;
+        }
+
         DEBUG_LOG << "开始处理工作表:" << sheetName
                   << "temperatureColumn=" << temperatureColumn
                   << "dtgColumn=" << dtgColumn
@@ -329,7 +335,13 @@ void TgSmallRawDataImportWorker::run()
             continue;
         }
 
+        // 预先分配容量以提高性能
         QList<TgSmallData> dataList;
+        dataList.reserve(12000);
+        
+        // 缓存sourceName字符串，避免重复构造
+        QString sourceName = QFileInfo(filePath).fileName() + ":" + sheetName;
+        
         int row = 2;
         int maxEmptyRows = 5;
         int emptyRowCount = 0;
@@ -337,9 +349,11 @@ void TgSmallRawDataImportWorker::run()
         int nonNumericRows = 0;
         int loggedNullRows = 0;
         int loggedNonNumericRows = 0;
+        const int checkInterval = 100; // 每100行检查一次停止标志
 
-        while (emptyRowCount < maxEmptyRows && row < 1000) {
-            {
+        while (emptyRowCount < maxEmptyRows && row < 12000) {
+            // 减少停止检查频率，每100行检查一次
+            if (row % checkInterval == 0) {
                 QMutexLocker locker(&m_mutex);
                 if (m_stopped) {
                     emit progressMessage(tr("导入已取消"));
@@ -348,20 +362,18 @@ void TgSmallRawDataImportWorker::run()
                 }
             }
 
-            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
-            std::shared_ptr<QXlsx::Cell> cellTemp;
+            // 使用read()方法替代cellAt()，性能更好
+            QVariant dtgValue = worksheet->read(row, dtgColumn);
+            QVariant tempValue;
             if (!useSerialNoAsX) {
-                cellTemp = xlsx.cellAt(row, temperatureColumn);
+                tempValue = worksheet->read(row, temperatureColumn);
             }
 
-            if (!cellDtg || cellDtg->value().isNull() ||
-                (!useSerialNoAsX && (!cellTemp || cellTemp->value().isNull()))) {
+            // 检查空值
+            if (dtgValue.isNull() || dtgValue.toString().trimmed().isEmpty() ||
+                (!useSerialNoAsX && (tempValue.isNull() || tempValue.toString().trimmed().isEmpty()))) {
                 if (loggedNullRows < 5) {
-                    DEBUG_LOG << "空单元格或缺失单元格，跳过行:" << row
-                              << "tempCellValid=" << static_cast<bool>(cellTemp)
-                              << "dtgCellValid=" << static_cast<bool>(cellDtg)
-                              << "tempNull=" << (cellTemp ? cellTemp->value().isNull() : true)
-                              << "dtgNull=" << (cellDtg ? cellDtg->value().isNull() : true);
+                    DEBUG_LOG << "空单元格或缺失单元格，跳过行:" << row;
                     loggedNullRows++;
                 }
                 nullValueRows++;
@@ -372,16 +384,18 @@ void TgSmallRawDataImportWorker::run()
 
             emptyRowCount = 0;
 
+            // 转换为数值
             bool ok1 = useSerialNoAsX;
             bool ok2 = false;
             double temperature = useSerialNoAsX ? static_cast<double>(dataList.size())
-                                                : cellTemp->value().toDouble(&ok1);
-            double dtgValue = cellDtg->value().toDouble(&ok2);
+                                                : tempValue.toDouble(&ok1);
+            double dtgValueDouble = dtgValue.toDouble(&ok2);
+            
             if ((!useSerialNoAsX && !ok1) || !ok2) {
                 if (loggedNonNumericRows < 5) {
                     DEBUG_LOG << "非数字数据，跳过行:" << row
-                              << "temperatureValue=" << (cellTemp ? cellTemp->value().toString() : QString())
-                              << "dtgValue=" << cellDtg->value().toString();
+                              << "temperatureValue=" << tempValue.toString()
+                              << "dtgValue=" << dtgValue.toString();
                     loggedNonNumericRows++;
                 }
                 nonNumericRows++;
@@ -395,8 +409,8 @@ void TgSmallRawDataImportWorker::run()
             data.setTemperature(temperature);
             data.setWeight(0.0);
             data.setTgValue(0.0);
-            data.setDtgValue(dtgValue);
-            data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
+            data.setDtgValue(dtgValueDouble);
+            data.setSourceName(sourceName);
             dataList.append(data);
             row++;
         }

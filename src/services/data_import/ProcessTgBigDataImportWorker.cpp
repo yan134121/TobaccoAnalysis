@@ -41,6 +41,10 @@ void ProcessTgBigDataImportWorker::setParameters(const QString& dirPath, AppInit
     // 清空可选覆盖的项目与批次（旧接口默认不覆盖）
     m_projectName.clear();
     m_batchCode.clear();
+    // 清空列覆盖（旧接口默认沿用当前逻辑）
+    m_useCustomColumns = false;
+    m_temperatureColumn1Based = -1;
+    m_dataColumn1Based = -1;
 }
 
 // 新重载：支持传入项目名称与批次代码，用于覆盖从文件名/文件夹解析的值
@@ -52,6 +56,28 @@ void ProcessTgBigDataImportWorker::setParameters(const QString& dirPath, const Q
     // 记录用户在导入前确认/修改的项目名称与批次代码
     m_projectName = projectName.trimmed();
     m_batchCode = batchCode.trimmed();
+    // 清空列覆盖（该接口未启用列选择）
+    m_useCustomColumns = false;
+    m_temperatureColumn1Based = -1;
+    m_dataColumn1Based = -1;
+}
+
+void ProcessTgBigDataImportWorker::setParameters(const QString& dirPath,
+                                                const QString& projectName,
+                                                const QString& batchCode,
+                                                bool useCustomColumns,
+                                                int temperatureColumn1Based,
+                                                int dataColumn1Based,
+                                                AppInitializer* appInitializer)
+{
+    m_dirPath = dirPath;
+    m_appInitializer = appInitializer;
+    m_stopped = false;
+    m_projectName = projectName.trimmed();
+    m_batchCode = batchCode.trimmed();
+    m_useCustomColumns = useCustomColumns;
+    m_temperatureColumn1Based = temperatureColumn1Based;
+    m_dataColumn1Based = dataColumn1Based;
 }
 
 void ProcessTgBigDataImportWorker::stop()
@@ -715,12 +741,22 @@ QList<ProcessTgBigData> ProcessTgBigDataImportWorker::readProcessTgBigDataFromCs
     int weightColIndex = -1; 
     int temperatureColIndex = -1; // 添加温度列索引 
     int headerRowIndex = -1;      // 记录表头行索引
+
+    // 如果启用自定义列：优先使用用户指定的温度列/数据列（1-based -> 0-based）
+    // 注意：这里只覆盖“温度/重量”的列选择；序号列仍尽量自动识别，找不到时用行号递增
+    if (m_useCustomColumns) {
+        const int tempIdx = m_temperatureColumn1Based - 1;
+        const int dataIdx = m_dataColumn1Based - 1;
+        if (tempIdx >= 0) temperatureColIndex = tempIdx;
+        if (dataIdx >= 0) weightColIndex = dataIdx;
+        // headerRowIndex 仍需要定位到表头之后开始读数据：先尝试自动识别表头；识别不到就默认从第一行开始读（即 headerRowIndex=0）
+    }
     
     // 查找列索引 
     for (int i = 0; i < csvData.size(); i++) { 
         const QStringList& row = csvData.at(i); 
         bool foundSerialNo = false;
-        bool foundWeight = false;
+        bool foundWeight = (weightColIndex >= 0); // 若已指定重量列，则视为已找到
         
         for (int j = 0; j < row.size(); j++) { 
             QString cellValue = row.at(j).trimmed(); 
@@ -728,35 +764,38 @@ QList<ProcessTgBigData> ProcessTgBigDataImportWorker::readProcessTgBigDataFromCs
                 serialNoColIndex = j;
                 foundSerialNo = true;
             } 
-            if (cellValue.contains("天平示数", Qt::CaseInsensitive) || 
-                cellValue.contains("天平克数", Qt::CaseInsensitive) ||
-                cellValue.contains("重量", Qt::CaseInsensitive)) { 
+            // 若未指定重量列，才通过表头关键字自动寻找重量列
+            if (weightColIndex < 0 &&
+                (cellValue.contains("天平示数", Qt::CaseInsensitive) || 
+                 cellValue.contains("天平克数", Qt::CaseInsensitive) ||
+                 cellValue.contains("重量", Qt::CaseInsensitive))) { 
                 weightColIndex = j;
                 foundWeight = true;
-            } 
-            if (cellValue.contains("温度", Qt::CaseInsensitive)) { 
+            }
+            // 若未指定温度列，才自动寻找温度列
+            if (temperatureColIndex < 0 && cellValue.contains("温度", Qt::CaseInsensitive)) { 
                 temperatureColIndex = j; 
-            } 
+            }
         } 
         
         // 如果找到了必要的列，记录表头行索引并跳出循环
-        if (foundSerialNo && foundWeight) { 
+        if ((foundSerialNo || serialNoColIndex >= 0) && foundWeight) { 
             headerRowIndex = i;
             break; 
         } 
     } 
     
     // 如果找不到必要的列，尝试使用固定列索引
-    if (serialNoColIndex < 0 || weightColIndex < 0) { 
+    if (weightColIndex < 0) { 
         WARNING_LOG << "未找到必要的列(序号或重量)，尝试使用固定列索引:" << filePath;
         
         // 根据文件名判断数据类型，设置默认列索引
         if (fileName.contains("JZH") || fileName.contains("JZQ") || fileName.contains("JZZ")) {
             // 假设第一列是序号，第二列是重量
-            serialNoColIndex = 0;
+            if (serialNoColIndex < 0) serialNoColIndex = 0;
             weightColIndex = 1;
             if (csvData.size() > 0 && csvData[0].size() > 2) {
-                temperatureColIndex = 2;  // 假设第三列是温度
+                if (temperatureColIndex < 0) temperatureColIndex = 2;  // 假设第三列是温度
             }
             // 假设第一行是表头
             headerRowIndex = 0;
@@ -765,6 +804,11 @@ QList<ProcessTgBigData> ProcessTgBigDataImportWorker::readProcessTgBigDataFromCs
             WARNING_LOG << "无法确定文件格式，无法继续解析:" << filePath;
             return dataList;
         }
+    }
+
+    // 若启用了自定义列，但未找到表头行，则默认从第一行开始读取（headerRowIndex=0）
+    if (m_useCustomColumns && headerRowIndex < 0) {
+        headerRowIndex = 0;
     }
     
     // 提取数据并保存
@@ -778,9 +822,16 @@ QList<ProcessTgBigData> ProcessTgBigDataImportWorker::readProcessTgBigDataFromCs
             const QStringList& row = csvData.at(i); 
             
             // 确保行有足够的列 
-            if (row.size() > qMax(serialNoColIndex, weightColIndex)) { 
-                QString serialNo = row.at(serialNoColIndex).trimmed(); 
-                QString weight = row.at(weightColIndex).trimmed(); 
+            const int requiredMax = qMax(qMax(serialNoColIndex, weightColIndex), temperatureColIndex);
+            if (requiredMax < 0 || row.size() <= requiredMax) {
+                continue;
+            }
+
+            QString serialNoStr;
+            if (serialNoColIndex >= 0) {
+                serialNoStr = row.at(serialNoColIndex).trimmed();
+            }
+            const QString weight = row.at(weightColIndex).trimmed(); 
                 
                 // 获取温度值（如果有） 
                 double temperature = 0.0; 
@@ -792,15 +843,22 @@ QList<ProcessTgBigData> ProcessTgBigDataImportWorker::readProcessTgBigDataFromCs
                 } 
                 
                 // 跳过空行和包含表头文字的行
-                if (!serialNo.isEmpty() && !weight.isEmpty() && 
-                    !serialNo.contains("序号", Qt::CaseInsensitive) && 
+                if (!weight.isEmpty() &&
+                    !serialNoStr.contains("序号", Qt::CaseInsensitive) &&
                     !weight.contains("天平示数", Qt::CaseInsensitive) && 
                     !weight.contains("天平克数", Qt::CaseInsensitive) &&
                     !weight.contains("重量", Qt::CaseInsensitive)) { 
                     
                     // 转换为数值 
                     bool serialNoOk = false; 
-                    int serialNoVal = serialNo.toInt(&serialNoOk); 
+                    int serialNoVal = 0;
+                    if (serialNoColIndex >= 0 && !serialNoStr.isEmpty()) {
+                        serialNoVal = serialNoStr.toInt(&serialNoOk);
+                    } else {
+                        // 若未能识别到序号列，则使用行号递增（从0开始）
+                        serialNoVal = dataList.size();
+                        serialNoOk = true;
+                    }
                     
                     bool weightOk = false; 
                     double weightVal = weight.toDouble(&weightOk); 
@@ -818,11 +876,10 @@ QList<ProcessTgBigData> ProcessTgBigDataImportWorker::readProcessTgBigDataFromCs
                         dataList.append(data); 
                         successCount++; 
                     } else { 
-                        WARNING_LOG << "数据转换失败:" << serialNo << weight; 
+                        WARNING_LOG << "数据转换失败:" << serialNoStr << weight; 
                         failCount++; 
                     } 
                 } 
-            }
         }
     }
     

@@ -56,6 +56,36 @@ void TgSmallDataImportWorker::setParameters(const QString& filePath,
     m_parallelNo = parallelNo;
     m_temperatureColumn = temperatureColumn;
     m_dtgColumn = dtgColumn;
+    // 兼容旧接口：视为“按指定列导入”，X=temperatureColumn（历史语义），Y=dtgColumn
+    m_useCustomColumns = true;
+    m_xColumn1BasedOr0 = temperatureColumn;
+    m_yColumn1Based = dtgColumn;
+    m_appInitializer = appInitializer;
+    m_stopped = false;
+}
+
+void TgSmallDataImportWorker::setParameters(const QString& filePath,
+                                           const QString& projectName,
+                                           const QString& batchCode,
+                                           const QDate& detectDate,
+                                           int parallelNo,
+                                           bool useCustomColumns,
+                                           int xColumn1BasedOr0,
+                                           int yColumn1Based,
+                                           AppInitializer* appInitializer)
+{
+    QMutexLocker locker(&m_mutex);
+    m_filePath = filePath;
+    m_projectName = projectName;
+    m_batchCode = batchCode;
+    m_detectDate = detectDate;
+    m_parallelNo = parallelNo;
+    m_useCustomColumns = useCustomColumns;
+    m_xColumn1BasedOr0 = xColumn1BasedOr0;
+    m_yColumn1Based = yColumn1Based;
+    // 保留旧字段以避免其他代码依赖（但本次导入逻辑优先使用新字段）
+    m_temperatureColumn = xColumn1BasedOr0;
+    m_dtgColumn = yColumn1Based;
     m_appInitializer = appInitializer;
     m_stopped = false;
 }
@@ -288,8 +318,9 @@ void TgSmallDataImportWorker::run()
     QString projectName = m_projectName;
     QString batchCode = m_batchCode;
     int parallelNo = m_parallelNo;
-    int temperatureColumn = m_temperatureColumn;
-    int dtgColumn = m_dtgColumn;
+    bool useCustomColumns = m_useCustomColumns;
+    int xColumn1BasedOr0 = m_xColumn1BasedOr0;
+    int yColumn1Based = m_yColumn1Based;
     AppInitializer* appInitializer = m_appInitializer;
     locker.unlock();
     
@@ -303,9 +334,11 @@ void TgSmallDataImportWorker::run()
         return;
     }
     
-    if (temperatureColumn <= 0 || dtgColumn <= 0) {
-        emit importError("温度列或DTG列设置无效，请设置为大于0的列号");
-        return;
+    if (useCustomColumns) {
+        if (xColumn1BasedOr0 < 0 || yColumn1Based <= 0) {
+            emit importError("X轴列或Y轴列设置无效：X列可为0或大于0，Y列必须大于0");
+            return;
+        }
     }
 
     emit progressMessage("正在打开Excel文件...");
@@ -361,6 +394,56 @@ void TgSmallDataImportWorker::run()
         int maxEmptyRows = 5;
         int emptyRowCount = 0;
 
+        // 自动识别模式：扫描表头行，找 serial_no / dtg
+        int headerRow = 1;
+        int serialCol1Based = 0; // 0 表示未找到（后续递增生成）
+        int dtgCol1Based = 0;
+        if (!useCustomColumns) {
+            QXlsx::Worksheet* worksheet = xlsx.currentWorksheet();
+            if (!worksheet) {
+                emit importError("无法读取工作表内容");
+                return;
+            }
+
+            const int maxScanRows = 30;
+            const int maxScanCols = 80;
+            for (int r = 1; r <= maxScanRows; ++r) {
+                bool foundAny = false;
+                for (int c = 1; c <= maxScanCols; ++c) {
+                    const QString v = worksheet->read(r, c).toString().trimmed();
+                    if (v.isEmpty()) continue;
+                    const QString lower = v.toLower();
+                    if (lower.contains("serial_no") || lower.contains("serial no") || lower == "serialno" || v.contains("序号")) {
+                        serialCol1Based = c;
+                        foundAny = true;
+                    }
+                    if (lower.contains("dtg")) {
+                        dtgCol1Based = c;
+                        foundAny = true;
+                    }
+                }
+                // dtg 是必须的；找到 dtg 所在行即可认为是表头行
+                if (dtgCol1Based > 0 && foundAny) {
+                    headerRow = r;
+                    break;
+                }
+            }
+
+            if (dtgCol1Based <= 0) {
+                emit importError("输入文件格式不符合：未找到 dtg 字段所在列");
+                return;
+            }
+
+            row = headerRow + 1;
+        }
+
+        // 指定列模式：直接使用用户选择的列（x=0 表示递增生成）
+        if (useCustomColumns) {
+            serialCol1Based = xColumn1BasedOr0; // 0 表示递增生成
+            dtgCol1Based = yColumn1Based;
+            row = 2;
+        }
+
         while (emptyRowCount < maxEmptyRows && row < 1000) {
             {
                 QMutexLocker locker(&m_mutex);
@@ -370,10 +453,15 @@ void TgSmallDataImportWorker::run()
                 }
             }
 
-            std::shared_ptr<QXlsx::Cell> cellTemp = xlsx.cellAt(row, temperatureColumn);
-            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgColumn);
+            // X: serial_no（可选，找不到或为0则递增生成）；Y: dtg（必须）
+            std::shared_ptr<QXlsx::Cell> cellSerial;
+            if (serialCol1Based > 0) {
+                cellSerial = xlsx.cellAt(row, serialCol1Based);
+            }
+            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgCol1Based);
 
-            if (!cellTemp || !cellDtg || cellTemp->value().isNull() || cellDtg->value().isNull()) {
+            // dtg 为空则认为空行
+            if (!cellDtg || cellDtg->value().isNull()) {
                 emptyRowCount++;
                 row++;
                 continue;
@@ -381,16 +469,22 @@ void TgSmallDataImportWorker::run()
 
             emptyRowCount = 0;
 
-            bool tempOk = false;
             bool dtgOk = false;
-            double temperature = cellTemp->value().toDouble(&tempOk);
             double dtgValue = cellDtg->value().toDouble(&dtgOk);
 
-            if (tempOk && dtgOk) {
+            if (dtgOk) {
                 TgSmallData data;
                 data.setSampleId(sampleId);
-                data.setSerialNo(dataList.size());
-                data.setTemperature(temperature);
+                // serial_no：优先读表中serial_no，否则递增生成
+                int serialNoVal = dataList.size();
+                if (serialCol1Based > 0 && cellSerial && !cellSerial->value().isNull()) {
+                    bool okSerial = false;
+                    int parsed = cellSerial->value().toInt(&okSerial);
+                    if (okSerial) serialNoVal = parsed;
+                }
+                data.setSerialNo(serialNoVal);
+                // 小热重这里的X轴改为serial_no，temperature字段不再强依赖，置0
+                data.setTemperature(0.0);
                 data.setWeight(0.0);
                 data.setTgValue(0.0);
                 data.setDtgValue(dtgValue);

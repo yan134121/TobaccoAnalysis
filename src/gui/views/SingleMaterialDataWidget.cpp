@@ -46,6 +46,7 @@
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -704,6 +705,54 @@ void SingleMaterialDataWidget::on_importTgBigDataButton_clicked()
         return;
     }
 
+    // 1.5) 列选择（可选）：类似小热重导入的“温度列/数据列”选择，并增加“不选择(沿用当前逻辑)”
+    bool useCustomColumns = false;
+    int temperatureColumn = 1;
+    int dataColumn = 2;
+    {
+        QDialog columnDialog(this);
+        columnDialog.setWindowTitle(tr("大热重：指定温度列与数据列"));
+        QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
+        QFormLayout* columnFormLayout = new QFormLayout();
+
+        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（沿用当前自动识别/默认导入逻辑）"));
+        noSelectCheckBox->setChecked(true);
+        columnLayout->addWidget(noSelectCheckBox);
+
+        QSpinBox* temperatureColumnSpinBox = new QSpinBox(&columnDialog);
+        temperatureColumnSpinBox->setRange(1, 1000);
+        temperatureColumnSpinBox->setValue(1);
+        temperatureColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("温度列(从1开始):"), temperatureColumnSpinBox);
+
+        QSpinBox* dataColumnSpinBox = new QSpinBox(&columnDialog);
+        dataColumnSpinBox->setRange(1, 1000);
+        dataColumnSpinBox->setValue(2);
+        dataColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("数据列(从1开始，作为重量/天平示数):"), dataColumnSpinBox);
+
+        QObject::connect(noSelectCheckBox, &QCheckBox::toggled, &columnDialog, [=](bool checked) {
+            temperatureColumnSpinBox->setEnabled(!checked);
+            dataColumnSpinBox->setEnabled(!checked);
+        });
+
+        columnLayout->addLayout(columnFormLayout);
+
+        QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        QObject::connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
+        QObject::connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
+        columnLayout->addWidget(columnButtonBox);
+
+        if (columnDialog.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("用户取消了操作。"), 3000);
+            return;
+        }
+
+        useCustomColumns = !noSelectCheckBox->isChecked();
+        temperatureColumn = temperatureColumnSpinBox->value();
+        dataColumn = dataColumnSpinBox->value();
+    }
+
     // 2. 创建输入对话框获取批次代码和检测日期（烟牌号固定为“大热重”）
     QDialog inputDialog(this);
     inputDialog.setWindowTitle(tr("输入大热重样本信息"));
@@ -827,7 +876,7 @@ void SingleMaterialDataWidget::on_importTgBigDataButton_clicked()
     
     // 设置工作线程参数并启动
     // m_tgBigDataImportWorker->setParameters(dirPath, m_appInitializer);
-    m_tgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, detectDate, m_appInitializer);
+    m_tgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, detectDate, useCustomColumns, temperatureColumn, dataColumn, m_appInitializer);
     m_tgBigDataImportWorker->start();
     
     emit statusMessage(tr("正在后台导入大热重数据..."), 3000);
@@ -840,6 +889,55 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     if (dirPath.isEmpty()) {
         emit statusMessage(tr("未选择文件夹，操作已取消。"), 3000);
         return;
+    }
+
+    // 1.5) 列选择（可选）：类似小热重导入的“温度列/数据列”选择，并增加“不选择(沿用当前逻辑)”
+    bool useCustomColumns = false;
+    int temperatureColumn = 1;
+    int dataColumn = 2;
+    {
+        QDialog columnDialog(this);
+        columnDialog.setWindowTitle(tr("工序大热重：指定温度列与数据列"));
+        QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
+        QFormLayout* columnFormLayout = new QFormLayout();
+
+        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（沿用当前自动识别/默认导入逻辑）"));
+        noSelectCheckBox->setChecked(true);
+        columnLayout->addWidget(noSelectCheckBox);
+
+        QSpinBox* temperatureColumnSpinBox = new QSpinBox(&columnDialog);
+        temperatureColumnSpinBox->setRange(1, 1000);
+        temperatureColumnSpinBox->setValue(1);
+        temperatureColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("温度列(从1开始):"), temperatureColumnSpinBox);
+
+        QSpinBox* dataColumnSpinBox = new QSpinBox(&columnDialog);
+        dataColumnSpinBox->setRange(1, 1000);
+        dataColumnSpinBox->setValue(2);
+        dataColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("数据列(从1开始，作为重量/示数):"), dataColumnSpinBox);
+
+        QObject::connect(noSelectCheckBox, &QCheckBox::toggled, &columnDialog, [=](bool checked) {
+            // checked=true 表示“不选择” => 禁用列输入
+            temperatureColumnSpinBox->setEnabled(!checked);
+            dataColumnSpinBox->setEnabled(!checked);
+        });
+
+        columnLayout->addLayout(columnFormLayout);
+
+        QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        QObject::connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
+        QObject::connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
+        columnLayout->addWidget(columnButtonBox);
+
+        if (columnDialog.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("已取消导入操作。"), 3000);
+            return;
+        }
+
+        useCustomColumns = !noSelectCheckBox->isChecked();
+        temperatureColumn = temperatureColumnSpinBox->value();
+        dataColumn = dataColumnSpinBox->value();
     }
 
     // 2) 解析默认项目与批次（从首个CSV文件名推断），并弹出对话框允许用户修改
@@ -968,7 +1066,7 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     }
     
     // 设置工作线程参数并启动（传递用户确认的项目与批次，用于覆盖解析值）
-    m_processTgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, m_appInitializer);
+    m_processTgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, useCustomColumns, temperatureColumn, dataColumn, m_appInitializer);
 
     m_processTgBigDataImportWorker->start();
     

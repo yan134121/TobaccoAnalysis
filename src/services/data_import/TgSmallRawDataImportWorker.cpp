@@ -48,6 +48,36 @@ void TgSmallRawDataImportWorker::setParameters(const QString& filePath,
     m_parallelNo = parallelNo;
     m_temperatureColumn = temperatureColumn;
     m_dtgColumn = dtgColumn;
+    // 兼容旧接口：视为“按指定列导入”，X=temperatureColumn（0表示递增生成），Y=dtgColumn（本worker现在作为weight列）
+    m_useCustomColumns = true;
+    m_xColumn1BasedOr0 = temperatureColumn;
+    m_yColumn1Based = dtgColumn;
+    m_appInitializer = appInitializer;
+    m_stopped = false;
+}
+
+void TgSmallRawDataImportWorker::setParameters(const QString& filePath,
+                                              const QString& projectName,
+                                              const QString& batchCode,
+                                              const QDate& detectDate,
+                                              int parallelNo,
+                                              bool useCustomColumns,
+                                              int xColumn1BasedOr0,
+                                              int yColumn1Based,
+                                              AppInitializer* appInitializer)
+{
+    QMutexLocker locker(&m_mutex);
+    m_filePath = filePath;
+    m_projectName = projectName;
+    m_batchCode = batchCode;
+    m_detectDate = detectDate;
+    m_parallelNo = parallelNo;
+    m_useCustomColumns = useCustomColumns;
+    m_xColumn1BasedOr0 = xColumn1BasedOr0;
+    m_yColumn1Based = yColumn1Based;
+    // 保留旧字段
+    m_temperatureColumn = xColumn1BasedOr0;
+    m_dtgColumn = yColumn1Based;
     m_appInitializer = appInitializer;
     m_stopped = false;
 }
@@ -232,8 +262,9 @@ void TgSmallRawDataImportWorker::run()
     QString projectName = m_projectName;
     QString batchCode = m_batchCode;
     int parallelNo = m_parallelNo;
-    int temperatureColumn = m_temperatureColumn;
-    int dtgColumn = m_dtgColumn;
+    bool useCustomColumns = m_useCustomColumns;
+    int xColumn1BasedOr0 = m_xColumn1BasedOr0;
+    int yColumn1Based = m_yColumn1Based;
     QDate detectDate = m_detectDate;
     AppInitializer* appInitializer = m_appInitializer;
     locker.unlock();
@@ -244,8 +275,9 @@ void TgSmallRawDataImportWorker::run()
               << "batchCode=" << batchCode
               << "parallelNo=" << parallelNo
               << "detectDate=" << detectDate.toString(Qt::ISODate)
-              << "temperatureColumn=" << temperatureColumn
-              << "dtgColumn=" << dtgColumn;
+              << "xColumn=" << xColumn1BasedOr0
+              << "yColumn(weight)=" << yColumn1Based
+              << "useCustomColumns=" << useCustomColumns;
 
     if (!initThreadDatabase()) {
         return;
@@ -257,10 +289,12 @@ void TgSmallRawDataImportWorker::run()
         return;
     }
 
-    if (temperatureColumn < 0 || dtgColumn <= 0) {
-        emit importError("X轴列或Y轴列设置无效，请设置为0或大于0的列号");
-        closeThreadDatabase();
-        return;
+    if (useCustomColumns) {
+        if (xColumn1BasedOr0 < 0 || yColumn1Based <= 0) {
+            emit importError("X轴列或Y轴列设置无效：X列可为0或大于0，Y列必须大于0");
+            closeThreadDatabase();
+            return;
+        }
     }
 
     if (m_filePath.isEmpty()) {
@@ -290,7 +324,6 @@ void TgSmallRawDataImportWorker::run()
     int totalDataCount = 0;
     int processedSheets = 0;
 
-    const bool useSerialNoAsX = (temperatureColumn == 0);
     for (const QString& sheetName : sheetNames) {
         {
             QMutexLocker locker(&m_mutex);
@@ -313,9 +346,9 @@ void TgSmallRawDataImportWorker::run()
         }
 
         DEBUG_LOG << "开始处理工作表:" << sheetName
-                  << "temperatureColumn=" << temperatureColumn
-                  << "dtgColumn=" << dtgColumn
-                  << "useSerialNoAsX=" << useSerialNoAsX;
+                  << "xColumn=" << xColumn1BasedOr0
+                  << "yColumn(weight)=" << yColumn1Based
+                  << "useCustomColumns=" << useCustomColumns;
         QString shortCode = extractShortCodeFromSheetName(sheetName);
         if (shortCode.isEmpty()) {
             WARNING_LOG << "无法从工作表名称中提取短码:" << sheetName;
@@ -351,6 +384,45 @@ void TgSmallRawDataImportWorker::run()
         int loggedNonNumericRows = 0;
         const int checkInterval = 100; // 每100行检查一次停止标志
 
+        // 自动识别模式：扫描表头行，找 serial_no / weight
+        int headerRow = 1;
+        int serialCol1Based = 0;
+        int weightCol1Based = 0;
+        if (!useCustomColumns) {
+            const int maxScanRows = 30;
+            const int maxScanCols = 80;
+            for (int r = 1; r <= maxScanRows; ++r) {
+                bool foundAny = false;
+                for (int c = 1; c <= maxScanCols; ++c) {
+                    const QString v = worksheet->read(r, c).toString().trimmed();
+                    if (v.isEmpty()) continue;
+                    const QString lower = v.toLower();
+                    if (lower.contains("serial_no") || lower.contains("serial no") || lower == "serialno" || v.contains("序号")) {
+                        serialCol1Based = c;
+                        foundAny = true;
+                    }
+                    if (lower.contains("weight") || v.contains("重量") || v.contains("天平示数") || v.contains("天平克数")) {
+                        weightCol1Based = c;
+                        foundAny = true;
+                    }
+                }
+                if (weightCol1Based > 0 && foundAny) {
+                    headerRow = r;
+                    break;
+                }
+            }
+            if (weightCol1Based <= 0) {
+                emit importError("输入文件格式不符合：未找到 重量/weight 字段所在列");
+                closeThreadDatabase();
+                return;
+            }
+            row = headerRow + 1;
+        } else {
+            serialCol1Based = xColumn1BasedOr0; // 0 表示递增生成
+            weightCol1Based = yColumn1Based;
+            row = 2;
+        }
+
         while (emptyRowCount < maxEmptyRows && row < 12000) {
             // 减少停止检查频率，每100行检查一次
             if (row % checkInterval == 0) {
@@ -362,16 +434,9 @@ void TgSmallRawDataImportWorker::run()
                 }
             }
 
-            // 使用read()方法替代cellAt()，性能更好
-            QVariant dtgValue = worksheet->read(row, dtgColumn);
-            QVariant tempValue;
-            if (!useSerialNoAsX) {
-                tempValue = worksheet->read(row, temperatureColumn);
-            }
-
-            // 检查空值
-            if (dtgValue.isNull() || dtgValue.toString().trimmed().isEmpty() ||
-                (!useSerialNoAsX && (tempValue.isNull() || tempValue.toString().trimmed().isEmpty()))) {
+            // Y: weight（必须）
+            QVariant weightValue = worksheet->read(row, weightCol1Based);
+            if (weightValue.isNull() || weightValue.toString().trimmed().isEmpty()) {
                 if (loggedNullRows < 5) {
                     DEBUG_LOG << "空单元格或缺失单元格，跳过行:" << row;
                     loggedNullRows++;
@@ -385,17 +450,13 @@ void TgSmallRawDataImportWorker::run()
             emptyRowCount = 0;
 
             // 转换为数值
-            bool ok1 = useSerialNoAsX;
             bool ok2 = false;
-            double temperature = useSerialNoAsX ? static_cast<double>(dataList.size())
-                                                : tempValue.toDouble(&ok1);
-            double dtgValueDouble = dtgValue.toDouble(&ok2);
+            double weightDouble = weightValue.toDouble(&ok2);
             
-            if ((!useSerialNoAsX && !ok1) || !ok2) {
+            if (!ok2) {
                 if (loggedNonNumericRows < 5) {
                     DEBUG_LOG << "非数字数据，跳过行:" << row
-                              << "temperatureValue=" << tempValue.toString()
-                              << "dtgValue=" << dtgValue.toString();
+                              << "weightValue=" << weightValue.toString();
                     loggedNonNumericRows++;
                 }
                 nonNumericRows++;
@@ -405,11 +466,21 @@ void TgSmallRawDataImportWorker::run()
 
             TgSmallData data;
             data.setSampleId(sampleId);
-            data.setSerialNo(dataList.size());
-            data.setTemperature(temperature);
-            data.setWeight(0.0);
+            // X: serial_no（可选，找不到或为0则递增生成）
+            int serialNoVal = dataList.size();
+            if (serialCol1Based > 0) {
+                QVariant serialValue = worksheet->read(row, serialCol1Based);
+                if (!serialValue.isNull() && !serialValue.toString().trimmed().isEmpty()) {
+                    bool okSerial = false;
+                    int parsed = serialValue.toInt(&okSerial);
+                    if (okSerial) serialNoVal = parsed;
+                }
+            }
+            data.setSerialNo(serialNoVal);
+            data.setTemperature(0.0);
+            data.setWeight(weightDouble);
             data.setTgValue(0.0);
-            data.setDtgValue(dtgValueDouble);
+            data.setDtgValue(0.0);
             data.setSourceName(sourceName);
             dataList.append(data);
             row++;

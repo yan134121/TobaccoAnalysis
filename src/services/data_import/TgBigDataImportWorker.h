@@ -41,6 +41,17 @@ public:
                        const QString& batchCode, 
                        const QDate& detectDate,
                        AppInitializer* appInitializer);
+    // 设置导入参数：支持按用户指定的温度列/数据列读取（列号从1开始）
+    // - useCustomColumns=false：沿用当前逻辑（按表头关键字识别“序号/天平示数”等）
+    // - useCustomColumns=true ：使用指定温度列/数据列（作为 temperature/weight），序号列若无法识别则用递增生成
+    void setParameters(const QString& dirPath,
+                       const QString& projectName,
+                       const QString& batchCode,
+                       const QDate& detectDate,
+                       bool useCustomColumns,
+                       int temperatureColumn1Based,
+                       int dataColumn1Based,
+                       AppInitializer* appInitializer);
     void stop();
 
 protected:
@@ -61,6 +72,11 @@ private:
     QString m_batchCode;
     QDate m_detectDate;
     int m_parallelNo;
+
+    // 可选列覆盖
+    bool m_useCustomColumns = false;
+    int m_temperatureColumn1Based = -1; // 1-based
+    int m_dataColumn1Based = -1;        // 1-based（weight/天平示数）
     
     // 线程独立的数据库连接
     QSqlDatabase m_threadDb;

@@ -56,6 +56,30 @@ void TgBigDataImportWorker::setParameters(const QString& dirPath,
     // m_parallelNo = parallelNo;
     m_appInitializer = appInitializer;
     m_stopped = false;
+    m_useCustomColumns = false;
+    m_temperatureColumn1Based = -1;
+    m_dataColumn1Based = -1;
+}
+
+void TgBigDataImportWorker::setParameters(const QString& dirPath,
+                                         const QString& projectName,
+                                         const QString& batchCode,
+                                         const QDate& detectDate,
+                                         bool useCustomColumns,
+                                         int temperatureColumn1Based,
+                                         int dataColumn1Based,
+                                         AppInitializer* appInitializer)
+{
+    QMutexLocker locker(&m_mutex);
+    m_dirPath = dirPath;
+    m_projectName = projectName;
+    m_batchCode = batchCode;
+    m_detectDate = detectDate;
+    m_appInitializer = appInitializer;
+    m_stopped = false;
+    m_useCustomColumns = useCustomColumns;
+    m_temperatureColumn1Based = temperatureColumn1Based;
+    m_dataColumn1Based = dataColumn1Based;
 }
 
 void TgBigDataImportWorker::stop()
@@ -428,81 +452,120 @@ QString TgBigDataImportWorker::parseGroupIdFromFilename(const QString& fileName)
 QList<TgBigData> TgBigDataImportWorker::readTgBigDataFromCsv(QTextStream& in, const QString& filePath, int sampleId)
 {
     QList<TgBigData> result;
-    QStringList headers;
-    QMap<QString, int> columnIndex; // key: 列名, value: 列索引
+    QMap<QString, int> columnIndex; // key: 列名, value: 列索引(0-based)
 
-    // 1. 找到标题行
+    // 若启用自定义列：直接使用用户指定列（1-based -> 0-based）
+    if (m_useCustomColumns) {
+        const int tempIdx = m_temperatureColumn1Based - 1;
+        const int dataIdx = m_dataColumn1Based - 1;
+        if (tempIdx >= 0) columnIndex["temperature"] = tempIdx;
+        if (dataIdx >= 0) columnIndex["weight"] = dataIdx;
+        // serialNo 尽量从表头识别；识别不到则用递增生成
+    }
+
+    // 1) 尝试找到标题行（用于识别序号列，或在未自定义时识别重量列）
+    QString firstDataLine;
+    bool hasBufferedFirstDataLine = false;
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
         if (line.isEmpty()) continue;
 
         QStringList fields = line.split(',');
-        // 查找必要列
+
         int serialCol = -1;
         int weightCol = -1;
-        int tgCol = -1;
-        int dtgCol = -1;
+        int temperatureCol = -1;
 
         for (int i = 0; i < fields.size(); ++i) {
             QString field = fields[i].trimmed();
             if (field.contains("序号")) serialCol = i;
-            else if (field.contains("天平示数")) weightCol = i;
-            // else if (field.contains("TG")) tgCol = i;
-            // else if (field.contains("DTG")) dtgCol = i;
+            else if (field.contains("天平示数") || field.contains("天平克数") || field.contains("重量")) weightCol = i;
+            else if (field.contains("温度")) temperatureCol = i;
         }
 
-        // 如果找到序号和天平示数列，保存列索引
-        if (serialCol != -1 && weightCol != -1) {
-            columnIndex["serialNo"] = serialCol;
-            columnIndex["weight"] = weightCol;
-            if (tgCol != -1) columnIndex["tg"] = tgCol;
-            if (dtgCol != -1) columnIndex["dtg"] = dtgCol;
-            break; // 标题行已找到，跳出循环
+        // 记录序号列（无论是否自定义）
+        if (serialCol != -1) columnIndex["serialNo"] = serialCol;
+
+        // 未自定义重量列时，用表头识别
+        if (!m_useCustomColumns && weightCol != -1) columnIndex["weight"] = weightCol;
+        // 未自定义温度列时，用表头识别（大热重数据结构里有 temperature 字段）
+        if (!m_useCustomColumns && temperatureCol != -1) columnIndex["temperature"] = temperatureCol;
+
+        // 如果是未自定义：至少需要 weight；serialNo 若没有可以后续递增生成
+        // 如果是自定义：至少需要 weight（来自自定义）；标题行可能无法识别，当前行可能已经是数据行
+        if (!m_useCustomColumns) {
+            if (columnIndex.contains("weight")) {
+                break; // 标题行已找到
+            }
+        } else {
+            // 自定义列：如果本行像是数据行（对应列能解析出数字），则把它作为第一条数据缓存起来
+            const int weightIdx = columnIndex.value("weight", -1);
+            if (weightIdx >= 0 && fields.size() > weightIdx) {
+                bool ok = false;
+                fields[weightIdx].toDouble(&ok);
+                if (ok) {
+                    firstDataLine = line;
+                    hasBufferedFirstDataLine = true;
+                }
+            }
+            break;
         }
     }
 
-    if (!columnIndex.contains("serialNo") || !columnIndex.contains("weight")) {
-        WARNING_LOG << "CSV缺少必要列：序号或天平示数" << filePath;
+    if (!columnIndex.contains("weight")) {
+        WARNING_LOG << "CSV缺少必要列：天平示数/重量（或未指定数据列）" << filePath;
         return result;
     }
 
-    // 2. 读取数据行
-    while (!in.atEnd()) {
-        QString line = in.readLine().trimmed();
-        if (line.isEmpty()) continue;
-
+    auto handleDataLine = [&](const QString& line) {
         QStringList fields = line.split(',');
-        if (fields.size() <= qMax(columnIndex["serialNo"], columnIndex["weight"])) continue;
+        const int serialIdx = columnIndex.value("serialNo", -1);
+        const int weightIdx = columnIndex.value("weight", -1);
+        const int tempIdx = columnIndex.value("temperature", -1);
+        const int requiredMax = qMax(qMax(serialIdx, weightIdx), tempIdx);
+        if (requiredMax < 0 || fields.size() <= requiredMax) return;
 
-        bool okSerial = false, okWeight = false;
-        int serialNo = fields[columnIndex["serialNo"]].toInt(&okSerial);
-        double weight = fields[columnIndex["weight"]].toDouble(&okWeight);
+        // weight
+        bool okWeight = false;
+        double weight = fields[weightIdx].trimmed().toDouble(&okWeight);
+        if (!okWeight) return;
 
-        if (!okSerial || !okWeight) {
-            // 如果序号或天平示数不是有效数字，说明数据无效，跳过
-            continue;
+        // serialNo：优先读取序号列，否则递增生成
+        int serialNo = 0;
+        bool okSerial = false;
+        if (serialIdx >= 0) {
+            serialNo = fields[serialIdx].trimmed().toInt(&okSerial);
+        } else {
+            serialNo = result.size();
+            okSerial = true;
+        }
+        if (!okSerial) return;
+
+        // temperature（可选）
+        double temperature = 0.0;
+        if (tempIdx >= 0) {
+            bool okTemp = false;
+            temperature = fields[tempIdx].trimmed().toDouble(&okTemp);
+            if (!okTemp) temperature = 0.0;
         }
 
         TgBigData data;
         data.setSampleId(sampleId);
         data.setSerialNo(serialNo);
         data.setWeight(weight);
+        data.setTemperature(temperature);
         data.setSourceName(QFileInfo(filePath).fileName());
-
-        // 可选列 TG、DTG
-        if (columnIndex.contains("tg") && fields.size() > columnIndex["tg"]) {
-            bool okTg = false;
-            double tg = fields[columnIndex["tg"]].toDouble(&okTg);
-            if (okTg) data.setTgValue(tg);
-        }
-
-        if (columnIndex.contains("dtg") && fields.size() > columnIndex["dtg"]) {
-            bool okDtg = false;
-            double dtg = fields[columnIndex["dtg"]].toDouble(&okDtg);
-            if (okDtg) data.setDtgValue(dtg);
-        }
-
         result.append(data);
+    };
+
+    // 2) 读取数据行
+    if (hasBufferedFirstDataLine) {
+        handleDataLine(firstDataLine);
+    }
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        if (line.isEmpty()) continue;
+        handleDataLine(line);
     }
 
     return result;

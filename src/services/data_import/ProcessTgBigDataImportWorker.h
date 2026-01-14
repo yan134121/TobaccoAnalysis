@@ -26,6 +26,16 @@ public:
     void setParameters(const QString& dirPath, AppInitializer* appInitializer);
     // 设置参数：目录、项目名称、批次代码与初始化器（用于覆盖解析出的信息）
     void setParameters(const QString& dirPath, const QString& projectName, const QString& batchCode, AppInitializer* appInitializer);
+    // 设置参数：目录、项目名称、批次代码、列选择（可选）与初始化器
+    // - useCustomColumns=false：沿用当前自动识别/默认逻辑
+    // - useCustomColumns=true ：使用指定的温度列/数据列（1-based）
+    void setParameters(const QString& dirPath,
+                       const QString& projectName,
+                       const QString& batchCode,
+                       bool useCustomColumns,
+                       int temperatureColumn1Based,
+                       int dataColumn1Based,
+                       AppInitializer* appInitializer);
     void stop();
 
     QMap<QString, QStringList> buildGroupedCsvPaths(const QString& directoryPath);
@@ -54,6 +64,11 @@ private:
     QString m_batchCode;
     QString m_shortCode;
     int m_parallelNo;
+
+    // 可选的列映射覆盖（用于按用户指定列提取温度/重量）
+    bool m_useCustomColumns = false;
+    int m_temperatureColumn1Based = -1; // 1-based，<=0 表示无效
+    int m_dataColumn1Based = -1;        // 1-based，<=0 表示无效
     
     // 线程独立的数据库连接
     QSqlDatabase m_threadDb;

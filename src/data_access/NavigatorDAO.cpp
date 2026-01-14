@@ -218,7 +218,8 @@ QVector<QPointF> NavigatorDAO::getSampleCurveData(int sampleId, const QString &d
     } else if (dataType == "小热重（原始数据）") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small_raw").sql;
         if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature";
+            // 原始小热重按“温度-重量”绘图：temperature 作为X轴，weight 作为Y轴
+            queryString = "SELECT temperature, weight FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature";
         }
     } else if (dataType == "色谱") {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;

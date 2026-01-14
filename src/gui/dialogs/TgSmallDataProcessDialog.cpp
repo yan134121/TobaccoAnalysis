@@ -2322,18 +2322,27 @@ void TgSmallDataProcessDialog::updateLegendPanel()
         delete item;
     }
 
-    int colorIndex = 0;
-    for (int sampleId : m_selectedSamples.keys()) {
+    // 图例颜色必须与实际曲线一致：
+    // - 以“当前可见曲线集合”为准（避免显示未绘制的样本）
+    // - 颜色从 ChartView 中读取实际 graph pen 颜色，避免因 QMap/QSet 遍历顺序不同导致对不上
+    QList<int> ids = m_visibleSamples.values();
+    std::sort(ids.begin(), ids.end());
+    for (int sampleId : ids) {
         QString legendText = buildSampleDisplayName(sampleId);
-
         QLabel* label = new QLabel(legendText);
-        QColor color = ColorUtils::setCurveColor(colorIndex);
+
+        QColor color;
+        if (m_chartView1) color = m_chartView1->getCurveColor(sampleId);
+        if (!color.isValid()) {
+            // 兜底：用固定算法分配（不保证与曲线一致，但不至于空白）
+            color = ColorUtils::setCurveColor(sampleId);
+        }
+
         QPalette pal = label->palette();
         pal.setColor(QPalette::WindowText, color);
         label->setPalette(pal);
 
         m_legendLayout->addWidget(label);
-        colorIndex++;
     }
     m_legendLayout->addStretch();
 }

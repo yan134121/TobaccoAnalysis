@@ -818,6 +818,16 @@ void ChartView::setLegendVisible(bool visible)
     m_plot->replot();
 }
 
+QColor ChartView::getCurveColor(int sampleId) const
+{
+    if (!m_plot) return QColor();
+    auto it = m_sampleGraphs.find(sampleId);
+    if (it == m_sampleGraphs.end()) return QColor();
+    QCPGraph* g = it.value();
+    if (!g) return QColor();
+    return g->pen().color();
+}
+
 
 void ChartView::replot()
 {

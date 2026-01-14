@@ -39,6 +39,8 @@ public:
     void setPlotTitle(const QString& titleText);
     void setLegendName(const QString &legendName);
     void setLegendVisible(bool visible);
+    // 取指定样本曲线的实际颜色（用于自定义图例与曲线一致）
+    QColor getCurveColor(int sampleId) const;
     void replot();
     // 新增：添加散点集合（用于显示坏点）
     void addScatterPoints(const QVector<double>& x, const QVector<double>& y, const QString& name, const QColor& color = Qt::red, int pointSize = 6);

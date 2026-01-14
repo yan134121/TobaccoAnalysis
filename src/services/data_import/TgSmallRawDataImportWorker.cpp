@@ -384,9 +384,9 @@ void TgSmallRawDataImportWorker::run()
         int loggedNonNumericRows = 0;
         const int checkInterval = 100; // 每100行检查一次停止标志
 
-        // 自动识别模式：扫描表头行，找 serial_no / weight
+        // 不选择：自动识别模式，扫描表头行，找 温度 / 重量（两者都必须找到）
         int headerRow = 1;
-        int serialCol1Based = 0;
+        int temperatureCol1Based = 0;
         int weightCol1Based = 0;
         if (!useCustomColumns) {
             const int maxScanRows = 30;
@@ -397,8 +397,8 @@ void TgSmallRawDataImportWorker::run()
                     const QString v = worksheet->read(r, c).toString().trimmed();
                     if (v.isEmpty()) continue;
                     const QString lower = v.toLower();
-                    if (lower.contains("serial_no") || lower.contains("serial no") || lower == "serialno" || v.contains("序号")) {
-                        serialCol1Based = c;
+                    if (lower.contains("temp") || v.contains("温度")) {
+                        temperatureCol1Based = c;
                         foundAny = true;
                     }
                     if (lower.contains("weight") || v.contains("重量") || v.contains("天平示数") || v.contains("天平克数")) {
@@ -406,19 +406,18 @@ void TgSmallRawDataImportWorker::run()
                         foundAny = true;
                     }
                 }
-                if (weightCol1Based > 0 && foundAny) {
+                if (temperatureCol1Based > 0 && weightCol1Based > 0 && foundAny) {
                     headerRow = r;
                     break;
                 }
             }
-            if (weightCol1Based <= 0) {
-                emit importError("输入文件格式不符合：未找到 重量/weight 字段所在列");
+            if (temperatureCol1Based <= 0 || weightCol1Based <= 0) {
+                emit importError("输入文件格式不符合：未找到温度列或重量列");
                 closeThreadDatabase();
                 return;
             }
             row = headerRow + 1;
         } else {
-            serialCol1Based = xColumn1BasedOr0; // 0 表示递增生成
             weightCol1Based = yColumn1Based;
             row = 2;
         }
@@ -466,18 +465,51 @@ void TgSmallRawDataImportWorker::run()
 
             TgSmallData data;
             data.setSampleId(sampleId);
-            // X: serial_no（可选，找不到或为0则递增生成）
-            int serialNoVal = dataList.size();
-            if (serialCol1Based > 0) {
-                QVariant serialValue = worksheet->read(row, serialCol1Based);
-                if (!serialValue.isNull() && !serialValue.toString().trimmed().isEmpty()) {
-                    bool okSerial = false;
-                    int parsed = serialValue.toInt(&okSerial);
-                    if (okSerial) serialNoVal = parsed;
+
+            // X轴处理：
+            // - 不选择：X=温度列（必须）
+            // - 指定列：xColumn=0 => 自动生成 serial_no 作为X；否则读取指定列作为X
+            double xValue = 0.0;
+            if (!useCustomColumns) {
+                QVariant tempValue = worksheet->read(row, temperatureCol1Based);
+                if (tempValue.isNull() || tempValue.toString().trimmed().isEmpty()) {
+                    emit importError("输入文件格式不符合：温度列数据为空");
+                    closeThreadDatabase();
+                    return;
+                }
+                bool okX = false;
+                xValue = tempValue.toDouble(&okX);
+                if (!okX) {
+                    emit importError("输入文件格式不符合：温度列数据非数字");
+                    closeThreadDatabase();
+                    return;
+                }
+                data.setSerialNo(dataList.size());
+                data.setTemperature(xValue); // 现有绘图使用 temperature 作为X
+            } else {
+                if (xColumn1BasedOr0 == 0) {
+                    const int serialNoVal = dataList.size();
+                    data.setSerialNo(serialNoVal);
+                    xValue = static_cast<double>(serialNoVal);
+                    data.setTemperature(xValue);
+                } else {
+                    QVariant xCell = worksheet->read(row, xColumn1BasedOr0);
+                    if (xCell.isNull() || xCell.toString().trimmed().isEmpty()) {
+                        emptyRowCount++;
+                        row++;
+                        continue;
+                    }
+                    bool okX = false;
+                    xValue = xCell.toDouble(&okX);
+                    if (!okX) {
+                        row++;
+                        continue;
+                    }
+                    data.setSerialNo(dataList.size());
+                    data.setTemperature(xValue);
                 }
             }
-            data.setSerialNo(serialNoVal);
-            data.setTemperature(0.0);
+
             data.setWeight(weightDouble);
             data.setTgValue(0.0);
             data.setDtgValue(0.0);

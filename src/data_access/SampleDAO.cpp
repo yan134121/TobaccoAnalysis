@@ -96,10 +96,11 @@ QVector<QPointF> SampleDAO::fetchChartDataForSample(int sampleId, const DataType
     } else if (dataType == DataType::TG_SMALL_RAW) {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_small_raw").sql;
         if (queryString.isEmpty()) {
-            queryString = "SELECT temperature, dtg_value FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature";
+            // 原始小热重：以温度-重量为基础（后续裁剪/归一化/平滑/微分都基于此原始曲线）
+            queryString = "SELECT temperature, weight FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature";
         }
         xColumn = "temperature";
-        yColumn = "dtg_value";
+        yColumn = "weight";
     // } else if (dataType == DataType::CHROMATOGRAPHY || dataType == DataType::GC) {
        } else if (dataType == DataType::CHROMATOGRAM) {
         queryString = SqlConfigLoader::getInstance().getSqlOperation("SampleDAO", "select_data_by_sample_id_chrom").sql;

@@ -15,6 +15,11 @@
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
         "description": "插入处理后的大热重数据记录"
       },
+      "select_data_by_sample_id_small_raw": {
+        "sql": "SELECT temperature, weight FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重（原始数据）"
+      },
       "insert_batch": {
         "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_name)",
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
@@ -309,6 +314,11 @@
         "sql": "SELECT temperature, tg_value, dtg_value FROM tg_small_data WHERE sample_id = :sample_id ORDER BY temperature",
         "parameters": ["sample_id"],
         "description": "根据样品ID查询小热重图表数据"
+      },
+      "fetch_chart_data_small_raw": {
+        "sql": "SELECT temperature, weight FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY temperature",
+        "parameters": ["sample_id"],
+        "description": "根据样品ID查询小热重（原始数据）图表数据"
       },
       "fetch_chart_data_chrom": {
         "sql": "SELECT retention_time, response_value FROM chromatography_data WHERE sample_id = :sample_id ORDER BY retention_time",

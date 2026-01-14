@@ -394,9 +394,9 @@ void TgSmallDataImportWorker::run()
         int maxEmptyRows = 5;
         int emptyRowCount = 0;
 
-        // 自动识别模式：扫描表头行，找 serial_no / dtg
+        // 不选择：自动识别模式，扫描表头行，找 温度 / dtg（两者都必须找到）
         int headerRow = 1;
-        int serialCol1Based = 0; // 0 表示未找到（后续递增生成）
+        int temperatureCol1Based = 0;
         int dtgCol1Based = 0;
         if (!useCustomColumns) {
             QXlsx::Worksheet* worksheet = xlsx.currentWorksheet();
@@ -413,8 +413,8 @@ void TgSmallDataImportWorker::run()
                     const QString v = worksheet->read(r, c).toString().trimmed();
                     if (v.isEmpty()) continue;
                     const QString lower = v.toLower();
-                    if (lower.contains("serial_no") || lower.contains("serial no") || lower == "serialno" || v.contains("序号")) {
-                        serialCol1Based = c;
+                    if (lower.contains("temp") || v.contains("温度")) {
+                        temperatureCol1Based = c;
                         foundAny = true;
                     }
                     if (lower.contains("dtg")) {
@@ -422,25 +422,28 @@ void TgSmallDataImportWorker::run()
                         foundAny = true;
                     }
                 }
-                // dtg 是必须的；找到 dtg 所在行即可认为是表头行
-                if (dtgCol1Based > 0 && foundAny) {
+                // 温度、dtg 都必须；找到二者所在行即可认为是表头行
+                if (temperatureCol1Based > 0 && dtgCol1Based > 0 && foundAny) {
                     headerRow = r;
                     break;
                 }
             }
 
-            if (dtgCol1Based <= 0) {
-                emit importError("输入文件格式不符合：未找到 dtg 字段所在列");
+            if (temperatureCol1Based <= 0 || dtgCol1Based <= 0) {
+                emit importError("输入文件格式不符合：未找到温度列或dtg列");
                 return;
             }
 
             row = headerRow + 1;
         }
 
-        // 指定列模式：直接使用用户选择的列（x=0 表示递增生成）
+        // 指定列：x=0 表示自动生成 serial_no 作为X（同时 temperature 同步为该序号以兼容现有绘图）
+        // 否则读取指定列作为X（写入 temperature）；Y 读取指定列作为 dtg
+        int xColumn = 0;      // 0 表示生成
+        int yColumn = 0;      // dtg 列（必填）
         if (useCustomColumns) {
-            serialCol1Based = xColumn1BasedOr0; // 0 表示递增生成
-            dtgCol1Based = yColumn1Based;
+            xColumn = xColumn1BasedOr0;
+            yColumn = yColumn1Based;
             row = 2;
         }
 
@@ -453,12 +456,17 @@ void TgSmallDataImportWorker::run()
                 }
             }
 
-            // X: serial_no（可选，找不到或为0则递增生成）；Y: dtg（必须）
-            std::shared_ptr<QXlsx::Cell> cellSerial;
-            if (serialCol1Based > 0) {
-                cellSerial = xlsx.cellAt(row, serialCol1Based);
+            // 不选择：X=温度列，Y=dtg列
+            // 指定列：X=指定列或0生成；Y=指定列
+            std::shared_ptr<QXlsx::Cell> cellX;
+            std::shared_ptr<QXlsx::Cell> cellDtg;
+            if (!useCustomColumns) {
+                cellX = xlsx.cellAt(row, temperatureCol1Based);
+                cellDtg = xlsx.cellAt(row, dtgCol1Based);
+            } else {
+                if (xColumn > 0) cellX = xlsx.cellAt(row, xColumn);
+                cellDtg = xlsx.cellAt(row, yColumn);
             }
-            std::shared_ptr<QXlsx::Cell> cellDtg = xlsx.cellAt(row, dtgCol1Based);
 
             // dtg 为空则认为空行
             if (!cellDtg || cellDtg->value().isNull()) {
@@ -475,16 +483,47 @@ void TgSmallDataImportWorker::run()
             if (dtgOk) {
                 TgSmallData data;
                 data.setSampleId(sampleId);
-                // serial_no：优先读表中serial_no，否则递增生成
-                int serialNoVal = dataList.size();
-                if (serialCol1Based > 0 && cellSerial && !cellSerial->value().isNull()) {
-                    bool okSerial = false;
-                    int parsed = cellSerial->value().toInt(&okSerial);
-                    if (okSerial) serialNoVal = parsed;
+
+                double xValue = 0.0;
+                if (!useCustomColumns) {
+                    // 不选择：必须能读到温度
+                    if (!cellX || cellX->value().isNull()) {
+                        emit importError("输入文件格式不符合：温度列数据为空");
+                        return;
+                    }
+                    bool xOk = false;
+                    xValue = cellX->value().toDouble(&xOk);
+                    if (!xOk) {
+                        emit importError("输入文件格式不符合：温度列数据非数字");
+                        return;
+                    }
+                    data.setSerialNo(dataList.size());
+                    data.setTemperature(xValue);
+                } else {
+                    if (xColumn == 0) {
+                        // X=0：自动生成 serial_no，并让 temperature 同步为该序号以兼容现有绘图（temperature当前被当作X轴）
+                        const int serialNoVal = dataList.size();
+                        data.setSerialNo(serialNoVal);
+                        xValue = static_cast<double>(serialNoVal);
+                        data.setTemperature(xValue);
+                    } else {
+                        // 读取指定列作为X
+                        if (!cellX || cellX->value().isNull()) {
+                            emptyRowCount++;
+                            row++;
+                            continue;
+                        }
+                        bool xOk = false;
+                        xValue = cellX->value().toDouble(&xOk);
+                        if (!xOk) {
+                            row++;
+                            continue;
+                        }
+                        data.setSerialNo(dataList.size());
+                        data.setTemperature(xValue);
+                    }
                 }
-                data.setSerialNo(serialNoVal);
-                // 小热重这里的X轴改为serial_no，temperature字段不再强依赖，置0
-                data.setTemperature(0.0);
+
                 data.setWeight(0.0);
                 data.setTgValue(0.0);
                 data.setDtgValue(dtgValue);

@@ -1084,37 +1084,54 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
         return;
     }
 
-    // 2. 创建输入对话框获取温度列与DTG列
-    QDialog columnDialog(this);
-    columnDialog.setWindowTitle(tr("指定小热重数据列"));
+    // 2. 列选择（可选）：增加“不选择（自动识别）”
+    bool useCustomColumns = false;
+    int xColumn = 0;   // 0 表示递增生成
+    int yColumn = 3;   // DTG
+    {
+        QDialog columnDialog(this);
+        columnDialog.setWindowTitle(tr("小热重：指定X轴列与DTG列"));
 
-    QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
-    QFormLayout* columnFormLayout = new QFormLayout();
+        QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
+        QFormLayout* columnFormLayout = new QFormLayout();
 
-    QSpinBox temperatureColumnSpinBox;
-    temperatureColumnSpinBox.setRange(1, 1000);
-    temperatureColumnSpinBox.setValue(1);
-    columnFormLayout->addRow(tr("温度列(从1开始):"), &temperatureColumnSpinBox);
+        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（自动查找“温度”作为X轴，自动查找“dtg”作为Y轴。）"));
+        noSelectCheckBox->setChecked(true);
+        columnLayout->addWidget(noSelectCheckBox);
 
-    QSpinBox dtgColumnSpinBox;
-    dtgColumnSpinBox.setRange(1, 1000);
-    dtgColumnSpinBox.setValue(3);
-    columnFormLayout->addRow(tr("DTG列(从1开始):"), &dtgColumnSpinBox);
+        QSpinBox* xColumnSpinBox = new QSpinBox(&columnDialog);
+        xColumnSpinBox->setRange(0, 1000);
+        xColumnSpinBox->setValue(0);
+        xColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("X轴列(0=自动生成serial_no作为X；>0=读取该列作为X，从1开始):"), xColumnSpinBox);
 
-    columnLayout->addLayout(columnFormLayout);
+        QSpinBox* yColumnSpinBox = new QSpinBox(&columnDialog);
+        yColumnSpinBox->setRange(1, 1000);
+        yColumnSpinBox->setValue(3);
+        yColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("Y轴列DTG(从1开始):"), yColumnSpinBox);
 
-    QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
-    connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
-    columnLayout->addWidget(columnButtonBox);
+        QObject::connect(noSelectCheckBox, &QCheckBox::toggled, &columnDialog, [=](bool checked) {
+            xColumnSpinBox->setEnabled(!checked);
+            yColumnSpinBox->setEnabled(!checked);
+        });
 
-    if (columnDialog.exec() != QDialog::Accepted) {
-        emit statusMessage(tr("用户取消了操作。"), 3000);
-        return;
+        columnLayout->addLayout(columnFormLayout);
+
+        QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
+        connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
+        columnLayout->addWidget(columnButtonBox);
+
+        if (columnDialog.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("用户取消了操作。"), 3000);
+            return;
+        }
+
+        useCustomColumns = !noSelectCheckBox->isChecked();
+        xColumn = xColumnSpinBox->value();
+        yColumn = yColumnSpinBox->value();
     }
-
-    int temperatureColumn = temperatureColumnSpinBox.value();
-    int dtgColumn = dtgColumnSpinBox.value();
 
     // 3. 创建输入对话框获取批次代码和检测日期（烟牌号固定为“小热重”）
     QDialog inputDialog(this);
@@ -1244,7 +1261,8 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
     }
     
     // 8. 设置工作线程参数
-    m_tgSmallDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo, temperatureColumn, dtgColumn, m_appInitializer);
+    m_tgSmallDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo,
+                                             useCustomColumns, xColumn, yColumn, m_appInitializer);
     
     // 9. 启动工作线程
     m_tgSmallDataImportWorker->start();
@@ -1262,36 +1280,54 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
         return;
     }
 
-    QDialog columnDialog(this);
-    columnDialog.setWindowTitle(tr("指定小热重（原始数据）列"));
+    // 列选择（可选）：增加“不选择（自动识别）”
+    bool useCustomColumns = false;
+    int xColumn = 0;  // 0 表示递增生成
+    int yColumn = 2;  // weight
+    {
+        QDialog columnDialog(this);
+        columnDialog.setWindowTitle(tr("小热重（原始数据）：指定X轴列与重量列"));
 
-    QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
-    QFormLayout* columnFormLayout = new QFormLayout();
+        QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
+        QFormLayout* columnFormLayout = new QFormLayout();
 
-    QSpinBox temperatureColumnSpinBox;
-    temperatureColumnSpinBox.setRange(0, 1000);
-    temperatureColumnSpinBox.setValue(1);
-    columnFormLayout->addRow(tr("X轴列(从0开始，0表示序号):"), &temperatureColumnSpinBox);
+        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（自动查找“温度”作为X轴，自动查找“重量/weight”作为Y轴。）"));
+        noSelectCheckBox->setChecked(true);
+        columnLayout->addWidget(noSelectCheckBox);
 
-    QSpinBox dtgColumnSpinBox;
-    dtgColumnSpinBox.setRange(1, 1000);
-    dtgColumnSpinBox.setValue(3);
-    columnFormLayout->addRow(tr("Y轴列(从1开始):"), &dtgColumnSpinBox);
+        QSpinBox* xColumnSpinBox = new QSpinBox(&columnDialog);
+        xColumnSpinBox->setRange(0, 1000);
+        xColumnSpinBox->setValue(0);
+        xColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("X轴列(0=自动生成serial_no作为X；>0=读取该列作为X，从1开始):"), xColumnSpinBox);
 
-    columnLayout->addLayout(columnFormLayout);
+        QSpinBox* yColumnSpinBox = new QSpinBox(&columnDialog);
+        yColumnSpinBox->setRange(1, 1000);
+        yColumnSpinBox->setValue(2);
+        yColumnSpinBox->setEnabled(false);
+        columnFormLayout->addRow(tr("Y轴列重量(从1开始):"), yColumnSpinBox);
 
-    QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
-    connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
-    columnLayout->addWidget(columnButtonBox);
+        QObject::connect(noSelectCheckBox, &QCheckBox::toggled, &columnDialog, [=](bool checked) {
+            xColumnSpinBox->setEnabled(!checked);
+            yColumnSpinBox->setEnabled(!checked);
+        });
 
-    if (columnDialog.exec() != QDialog::Accepted) {
-        emit statusMessage(tr("用户取消了操作。"), 3000);
-        return;
+        columnLayout->addLayout(columnFormLayout);
+
+        QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
+        connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
+        columnLayout->addWidget(columnButtonBox);
+
+        if (columnDialog.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("用户取消了操作。"), 3000);
+            return;
+        }
+
+        useCustomColumns = !noSelectCheckBox->isChecked();
+        xColumn = xColumnSpinBox->value();
+        yColumn = yColumnSpinBox->value();
     }
-
-    int temperatureColumn = temperatureColumnSpinBox.value();
-    int dtgColumn = dtgColumnSpinBox.value();
 
     QDialog inputDialog(this);
     inputDialog.setWindowTitle(tr("输入小热重（原始数据）样本信息"));
@@ -1408,7 +1444,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
     }
 
     m_tgSmallRawDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo,
-                                                temperatureColumn, dtgColumn, m_appInitializer);
+                                                useCustomColumns, xColumn, yColumn, m_appInitializer);
     m_tgSmallRawDataImportWorker->start();
 
     emit statusMessage(tr("正在后台导入小热重（原始数据）..."), 3000);

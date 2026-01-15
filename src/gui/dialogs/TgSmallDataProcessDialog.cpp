@@ -1121,12 +1121,15 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
     };
 
     // 定义优先级列表
-    // 根据用户反馈：
-    // 1. "小热重"：不需要处理，只有 RawData。
-    // 2. "小热重（原始数据）"：虽然需要处理，但在选择最优曲线时使用 RawData 是符合预期的（旧逻辑即如此且被认为正常）。
-    // 因此，统一优先尝试获取 RawData，如果获取不到（例如某些处理流程未保留RawData），则尝试获取 Derivative 或其他阶段。
+    // 根据用户最新指令：
+    // 1. "小热重（原始数据）"：使用处理后的数据进行对比（与MATLAB逻辑一致），优先找 Derivative。
+    // 2. "小热重"：保持不变，使用 RawData（因为它是成品数据）。
     QList<StageName> priorityList;
-    priorityList << StageName::RawData << StageName::Derivative << StageName::Smoothed;
+    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+        priorityList << StageName::Derivative << StageName::Smooth << StageName::RawData;
+    } else {
+        priorityList << StageName::RawData << StageName::Derivative << StageName::Smooth;
+    }
 
     // 1. 确定 effectiveStage
     StageName effectiveStage = StageName::RawData; // 默认
@@ -1173,7 +1176,7 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
             switch(effectiveStage) {
                 case StageName::RawData: stageNameStr = "RawData"; break;
                 case StageName::Derivative: stageNameStr = "Derivative"; break;
-                case StageName::Smoothed: stageNameStr = "Smoothed"; break;
+                case StageName::Smooth: stageNameStr = "Smoothed"; break;
                 default: stageNameStr = QString::number((int)effectiveStage); break;
             }
             

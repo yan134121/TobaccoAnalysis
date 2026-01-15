@@ -30,6 +30,22 @@ public:
     // 计算欧氏距离
     double calculateEuclideanDistance(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2);
 
+    // pickBestOfTwo：在两个样本中选择最优样本（参考MATLAB pickBestOfTwo-后加.m）
+    // 返回最优样本索引（0或1），以及评分详情
+    struct PickBestResult {
+        int bestIndex;  // 0 或 1
+        double quality1; // 样本1的质量分数（越小越好）
+        double quality2; // 样本2的质量分数（越小越好）
+        double residualRms1; // 样本1的LOESS残差RMS
+        double residualRms2; // 样本2的LOESS残差RMS
+        double stability1;   // 样本1的稳定性
+        double stability2;   // 样本2的稳定性
+        double nrmse;        // 配对一致性：NRMSE
+        double pearson;      // 配对一致性：Pearson
+        double euclid;       // 配对一致性：Euclidean
+    };
+    PickBestResult pickBestOfTwo(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2, double loessSpan = 0.05);
+
 public slots:
     /**
      * @brief 对【已经加载好】的曲线进行差异度排名计算 (同步方法，适合在后台线程调用)

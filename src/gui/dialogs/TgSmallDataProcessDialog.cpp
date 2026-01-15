@@ -782,6 +782,7 @@ void TgSmallDataProcessDialog::setupUI()
     m_unselectAllButton = new QPushButton(tr("取消所有选中样本"), tab1Widget);
     // 新增清除曲线按钮
     m_clearCurvesButton = new QPushButton(tr("清除曲线"), tab1Widget);
+    m_pickBestCurveButton = new QPushButton(tr("返回最优曲线"), tab1Widget);
     
     
 
@@ -796,6 +797,7 @@ void TgSmallDataProcessDialog::setupUI()
     m_buttonLayout->addWidget(m_drawAllButton);
     m_buttonLayout->addWidget(m_unselectAllButton);
     m_buttonLayout->addWidget(m_clearCurvesButton);
+    m_buttonLayout->addWidget(m_pickBestCurveButton);
 
     // m_mainLayout->addLayout(m_buttonLayout);
 
@@ -1001,6 +1003,7 @@ void TgSmallDataProcessDialog::setupConnections()
     connect(m_clearCurvesButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onClearCurvesClicked);
     connect(m_drawAllButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onDrawAllSelectedCurvesClicked);
     connect(m_unselectAllButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onUnselectAllSamplesClicked);
+    connect(m_pickBestCurveButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onPickBestCurveClicked);
     
     // 选中样本列表勾选变化驱动左侧导航勾选状态
     connect(m_selectedSamplesList, &QListWidget::itemChanged, this, &TgSmallDataProcessDialog::onSelectedSamplesListItemChanged);
@@ -1097,6 +1100,105 @@ void TgSmallDataProcessDialog::onUnselectAllSamplesClicked()
     m_selectedSamples.clear();
     m_visibleSamples.clear();
     updateSelectedSamplesList();
+}
+
+void TgSmallDataProcessDialog::onPickBestCurveClicked()
+{
+    // 获取当前已处理并缓存的样本数据
+    if (m_stageDataCache.isEmpty()) {
+        QMessageBox::warning(this, tr("提示"), tr("请先点击“处理并绘图”按钮处理数据。"));
+        return;
+    }
+
+    // 收集所有可见样本的Derivative阶段曲线（小热重原始数据用RawData）
+    QList<QPair<int, QSharedPointer<Curve>>> candidateCurves;
+    auto getCurveFromStage = [](const SampleDataFlexible& sample, StageName stage) -> QSharedPointer<Curve> {
+        for (const StageData& s : sample.stages) {
+            if (s.stageName == stage) return s.curve;
+        }
+        return QSharedPointer<Curve>();
+    };
+
+    // 小热重（原始数据）使用RawData阶段，其他使用Derivative阶段
+    StageName targetStage = (m_dataTypeName == QStringLiteral("小热重（原始数据）")) 
+                           ? StageName::RawData 
+                           : StageName::Derivative;
+
+    for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
+        const SampleGroup& group = it.value();
+        for (const SampleDataFlexible& sample : group.sampleDatas) {
+            if (m_visibleSamples.contains(sample.sampleId)) {
+                QSharedPointer<Curve> curve = getCurveFromStage(sample, targetStage);
+                if (!curve.isNull()) {
+                    candidateCurves.append({sample.sampleId, curve});
+                }
+            }
+        }
+    }
+
+    if (candidateCurves.size() < 2) {
+        QMessageBox::warning(this, tr("提示"), tr("至少需要2条可见曲线才能选择最优曲线。"));
+        return;
+    }
+
+    // 如果只有2条，直接比较
+    int bestSampleId = -1;
+    if (candidateCurves.size() == 2) {
+        SampleComparisonService* comparer = m_appInitializer ? m_appInitializer->getSampleComparisonService() : nullptr;
+        if (!comparer) {
+            QMessageBox::warning(this, tr("错误"), tr("无法获取样本比较服务。"));
+            return;
+        }
+
+        auto result = comparer->pickBestOfTwo(candidateCurves[0].second, candidateCurves[1].second, m_currentParams.loessSpan);
+        bestSampleId = candidateCurves[result.bestIndex].first;
+
+        QString msg = tr("最优样本: %1\n质量分数1: %2\n质量分数2: %3")
+                      .arg(buildSampleDisplayName(bestSampleId))
+                      .arg(result.quality1, 0, 'f', 6)
+                      .arg(result.quality2, 0, 'f', 6);
+        QMessageBox::information(this, tr("最优曲线选择结果"), msg);
+    } else {
+        // 多条曲线：两两比较，选择平均质量分数最优的
+        SampleComparisonService* comparer = m_appInitializer ? m_appInitializer->getSampleComparisonService() : nullptr;
+        if (!comparer) {
+            QMessageBox::warning(this, tr("错误"), tr("无法获取样本比较服务。"));
+            return;
+        }
+
+        QMap<int, double> qualityScores;
+        QMap<int, int> comparisonCounts;
+
+        for (int i = 0; i < candidateCurves.size(); ++i) {
+            for (int j = i + 1; j < candidateCurves.size(); ++j) {
+                auto result = comparer->pickBestOfTwo(candidateCurves[i].second, candidateCurves[j].second, m_currentParams.loessSpan);
+                int winnerId = candidateCurves[result.bestIndex].first;
+                double winnerQuality = (result.bestIndex == 0) ? result.quality1 : result.quality2;
+                qualityScores[winnerId] = qualityScores.value(winnerId, 0.0) + winnerQuality;
+                comparisonCounts[winnerId] = comparisonCounts.value(winnerId, 0) + 1;
+            }
+        }
+
+        double bestScore = std::numeric_limits<double>::max();
+        for (auto it = qualityScores.constBegin(); it != qualityScores.constEnd(); ++it) {
+            int count = comparisonCounts.value(it.key(), 1);
+            double avgScore = it.value() / count;
+            if (avgScore < bestScore) {
+                bestScore = avgScore;
+                bestSampleId = it.key();
+            }
+        }
+    }
+
+    if (bestSampleId > 0) {
+        QString bestName = buildSampleDisplayName(bestSampleId);
+        if (m_chartView1) {
+            m_chartView1->highlightGraph(bestName);
+        }
+        QMessageBox::information(this, tr("最优曲线"), tr("已选择并高亮显示最优曲线: %1").arg(bestName));
+    } else {
+        QMessageBox::warning(this, tr("错误"), tr("无法确定最优曲线。"));
+    }
 }
 
 void TgSmallDataProcessDialog::onClearCurvesClicked()

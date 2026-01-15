@@ -120,6 +120,7 @@ private slots:
 
     void onDrawAllSelectedCurvesClicked(); // 绘制所有选中曲线
     void onUnselectAllSamplesClicked();    // 取消所有选中样本
+    void onPickBestCurveClicked();         // 返回最优曲线
     // void onStringsUpdated();
     // void onSamplesUpdated(const QString& dataType);
 
@@ -235,6 +236,7 @@ private:
     QPushButton* m_clearCurvesButton; // 清除曲线按钮
     QPushButton* m_drawAllButton; // 绘制所有选中曲线按钮
     QPushButton* m_unselectAllButton; // 取消所有选中样本按钮
+    QPushButton* m_pickBestCurveButton; // 返回最优曲线按钮
     
     // 数据访问
     SampleDAO m_sampleDao;

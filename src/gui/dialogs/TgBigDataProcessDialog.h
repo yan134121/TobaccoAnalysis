@@ -108,6 +108,7 @@ private slots:
     void onClearCurvesClicked(); // 清除曲线按钮槽函数
     void onDrawAllSelectedCurvesClicked(); // 绘制所有选中曲线
     void onUnselectAllSamplesClicked();    // 取消所有选中样本
+    void onPickBestCurveClicked();         // 返回最优曲线
     // void onClearCurvesClicked(); // 清除曲线按钮槽函数
 
     // 显示/隐藏左侧标签页（导航 + 选中样本）
@@ -204,6 +205,7 @@ private:
     QPushButton* m_clearCurvesButton; // 清除曲线按钮
     QPushButton* m_drawAllButton; // 绘制所有选中曲线按钮
     QPushButton* m_unselectAllButton; // 取消所有选中样本按钮
+    QPushButton* m_pickBestCurveButton; // 返回最优曲线按钮
     
     // 数据访问
     SampleDAO m_sampleDao;

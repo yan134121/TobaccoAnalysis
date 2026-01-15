@@ -871,7 +871,13 @@ void TgBigDataProcessDialog::onPickBestCurveClicked()
     }
 
     if (candidateCurves.size() < 2) {
-        QMessageBox::warning(this, tr("提示"), tr("至少需要2条可见曲线才能选择最优曲线。"));
+        QString msg = tr("至少需要2条有效曲线才能选择最优曲线。");
+        if (m_visibleSamples.size() >= 2) {
+            msg += tr("\n\n当前可见样本数：%1\n实际获取到的曲线数：%2\n\n可能原因：\n1. 新勾选的样本尚未进行处理；\n2. 数据处理未生成目标阶段曲线（如Derivative）。\n\n建议：请重新点击“处理并绘图”按钮。")
+                    .arg(m_visibleSamples.size())
+                    .arg(candidateCurves.size());
+        }
+        QMessageBox::warning(this, tr("提示"), msg);
         return;
     }
 
@@ -900,16 +906,18 @@ void TgBigDataProcessDialog::onPickBestCurveClicked()
             return;
         }
 
-        QMap<int, double> qualityScores; // <sampleId, 平均质量分数>
+        QMap<int, double> qualityScores; // <sampleId, 累计质量分数>
         QMap<int, int> comparisonCounts; // <sampleId, 参与比较次数>
 
         for (int i = 0; i < candidateCurves.size(); ++i) {
             for (int j = i + 1; j < candidateCurves.size(); ++j) {
                 auto result = comparer->pickBestOfTwo(candidateCurves[i].second, candidateCurves[j].second, m_currentParams.loessSpan);
-                int winnerId = candidateCurves[result.bestIndex].first;
-                double winnerQuality = (result.bestIndex == 0) ? result.quality1 : result.quality2;
-                qualityScores[winnerId] = qualityScores.value(winnerId, 0.0) + winnerQuality;
-                comparisonCounts[winnerId] = comparisonCounts.value(winnerId, 0) + 1;
+                int id_i = candidateCurves[i].first;
+                int id_j = candidateCurves[j].first;
+                qualityScores[id_i] = qualityScores.value(id_i, 0.0) + result.quality1;
+                qualityScores[id_j] = qualityScores.value(id_j, 0.0) + result.quality2;
+                comparisonCounts[id_i] = comparisonCounts.value(id_i, 0) + 1;
+                comparisonCounts[id_j] = comparisonCounts.value(id_j, 0) + 1;
             }
         }
 
@@ -925,7 +933,7 @@ void TgBigDataProcessDialog::onPickBestCurveClicked()
         }
     }
 
-    if (bestSampleId > 0) {
+    if (bestSampleId >= 0) {
         // 高亮显示最优曲线
         QString bestName = buildSampleDisplayName(bestSampleId);
         if (m_chartView1) {

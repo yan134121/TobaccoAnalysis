@@ -1110,7 +1110,8 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
         return;
     }
 
-    // 收集所有可见样本的Derivative阶段曲线（小热重原始数据用RawData）
+    // 收集所有可见样本的曲线
+    // 策略：先扫描确定一个所有（或大多数）样本都拥有的最佳 Stage，然后统一提取
     QList<QPair<int, QSharedPointer<Curve>>> candidateCurves;
     auto getCurveFromStage = [](const SampleDataFlexible& sample, StageName stage) -> QSharedPointer<Curve> {
         for (const StageData& s : sample.stages) {
@@ -1119,25 +1120,69 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
         return QSharedPointer<Curve>();
     };
 
-    // 小热重（原始数据）使用RawData阶段，其他使用Derivative阶段
-    StageName targetStage = (m_dataTypeName == QStringLiteral("小热重（原始数据）")) 
-                           ? StageName::RawData 
-                           : StageName::Derivative;
+    // 定义优先级列表
+    // 根据用户反馈：
+    // 1. "小热重"：不需要处理，只有 RawData。
+    // 2. "小热重（原始数据）"：虽然需要处理，但在选择最优曲线时使用 RawData 是符合预期的（旧逻辑即如此且被认为正常）。
+    // 因此，统一优先尝试获取 RawData，如果获取不到（例如某些处理流程未保留RawData），则尝试获取 Derivative 或其他阶段。
+    QList<StageName> priorityList;
+    priorityList << StageName::RawData << StageName::Derivative << StageName::Smoothed;
 
+    // 1. 确定 effectiveStage
+    StageName effectiveStage = StageName::RawData; // 默认
+    bool stageFound = false;
+
+    // 遍历所有可见样本，寻找共同存在的最高优先级 Stage
+    // 这里简化处理：找到第一个可见样本存在的最高优先级 Stage 作为 effectiveStage
+    for (auto it = m_stageDataCache.constBegin(); !stageFound && it != m_stageDataCache.constEnd(); ++it) {
+        const SampleGroup& group = it.value();
+        for (const SampleDataFlexible& sample : group.sampleDatas) {
+            if (m_visibleSamples.contains(sample.sampleId)) {
+                for (StageName s : priorityList) {
+                    if (!getCurveFromStage(sample, s).isNull()) {
+                        effectiveStage = s;
+                        stageFound = true;
+                        DEBUG_LOG << "onPickBestCurveClicked: Found effective stage" << (int)s << "in sample" << sample.sampleId;
+                        break;
+                    }
+                }
+            }
+            if (stageFound) break;
+        }
+    }
+
+    // 2. 使用 effectiveStage 提取曲线
     for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
         const SampleGroup& group = it.value();
         for (const SampleDataFlexible& sample : group.sampleDatas) {
             if (m_visibleSamples.contains(sample.sampleId)) {
-                QSharedPointer<Curve> curve = getCurveFromStage(sample, targetStage);
+                QSharedPointer<Curve> curve = getCurveFromStage(sample, effectiveStage);
                 if (!curve.isNull()) {
                     candidateCurves.append({sample.sampleId, curve});
+                } else {
+                    WARNING_LOG << "onPickBestCurveClicked: Sample" << sample.sampleId << "missing curve for stage" << (int)effectiveStage;
                 }
             }
         }
     }
 
     if (candidateCurves.size() < 2) {
-        QMessageBox::warning(this, tr("提示"), tr("至少需要2条可见曲线才能选择最优曲线。"));
+        QString msg = tr("至少需要2条有效曲线才能选择最优曲线。");
+        if (m_visibleSamples.size() >= 2) {
+            QString stageNameStr;
+            switch(effectiveStage) {
+                case StageName::RawData: stageNameStr = "RawData"; break;
+                case StageName::Derivative: stageNameStr = "Derivative"; break;
+                case StageName::Smoothed: stageNameStr = "Smoothed"; break;
+                default: stageNameStr = QString::number((int)effectiveStage); break;
+            }
+            
+            msg += tr("\n\n当前可见样本数：%1\n实际获取到的曲线数：%2\n尝试获取的阶段：%3\n\n可能原因：\n1. 新勾选的样本尚未进行处理；\n2. 数据处理未生成目标阶段曲线。\n\n建议：请重新点击“处理并绘图”按钮。")
+                    .arg(m_visibleSamples.size())
+                    .arg(candidateCurves.size())
+                    .arg(stageNameStr);
+        }
+        QMessageBox::warning(this, tr("提示"), msg);
         return;
     }
 
@@ -1172,10 +1217,12 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
         for (int i = 0; i < candidateCurves.size(); ++i) {
             for (int j = i + 1; j < candidateCurves.size(); ++j) {
                 auto result = comparer->pickBestOfTwo(candidateCurves[i].second, candidateCurves[j].second, m_currentParams.loessSpan);
-                int winnerId = candidateCurves[result.bestIndex].first;
-                double winnerQuality = (result.bestIndex == 0) ? result.quality1 : result.quality2;
-                qualityScores[winnerId] = qualityScores.value(winnerId, 0.0) + winnerQuality;
-                comparisonCounts[winnerId] = comparisonCounts.value(winnerId, 0) + 1;
+                int id_i = candidateCurves[i].first;
+                int id_j = candidateCurves[j].first;
+                qualityScores[id_i] = qualityScores.value(id_i, 0.0) + result.quality1;
+                qualityScores[id_j] = qualityScores.value(id_j, 0.0) + result.quality2;
+                comparisonCounts[id_i] = comparisonCounts.value(id_i, 0) + 1;
+                comparisonCounts[id_j] = comparisonCounts.value(id_j, 0) + 1;
             }
         }
 
@@ -1190,7 +1237,7 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
         }
     }
 
-    if (bestSampleId > 0) {
+    if (bestSampleId >= 0) {
         QString bestName = buildSampleDisplayName(bestSampleId);
         if (m_chartView1) {
             m_chartView1->highlightGraph(bestName);

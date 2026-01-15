@@ -72,6 +72,9 @@ public:
     // 获取选中曲线及其样本ID（返回 <样本ID, <x数据, y数据>>）
     QList<QPair<int, QPair<QVector<double>, QVector<double>>>> getSelectedCurvesWithSampleIds() const;
     
+    // 获取所有曲线及其样本ID（返回 <样本ID, <x数据, y数据>>）
+    QList<QPair<int, QPair<QVector<double>, QVector<double>>>> getAllCurvesWithSampleIds() const;
+    
     // 导出曲线数据到CSV文件
     bool exportDataToCSV(const QString& filePath) const;
     

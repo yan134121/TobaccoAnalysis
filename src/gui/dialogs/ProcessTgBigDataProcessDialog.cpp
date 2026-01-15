@@ -25,6 +25,11 @@
 #include <QCursor>
 #include <QStyle>
 #include <QStyleOptionViewItem>
+#include "services/algorithm/processing/IProcessingStep.h"
+#include "services/algorithm/Clipping.h"
+#include "services/algorithm/Normalization.h"
+#include "services/algorithm/SavitzkyGolay.h"
+#include "services/algorithm/Loess.h"
 
 ProcessTgBigDataProcessDialog::ProcessTgBigDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
     QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
@@ -1056,36 +1061,56 @@ void ProcessTgBigDataProcessDialog::onUnselectAllSamplesClicked()
 
 void ProcessTgBigDataProcessDialog::onPickBestCurveClicked()
 {
-    // 获取当前已处理并缓存的样本数据
-    if (m_stageDataCache.isEmpty()) {
+    // 直接从图表中获取所有曲线
+    if (!m_chartView1) {
+        QMessageBox::warning(this, tr("提示"), tr("图表视图未初始化。"));
+        return;
+    }
+
+    // 获取图表中所有曲线及其样本ID
+    QList<QPair<int, QPair<QVector<double>, QVector<double>>>> allCurves = m_chartView1->getAllCurvesWithSampleIds();
+    
+    if (allCurves.size() < 2) {
+        QMessageBox::warning(this, tr("提示"), tr("至少需要2条曲线才能比较并返回最优曲线。当前图表中有 %1 条曲线。").arg(allCurves.size()));
+        return;
+    }
+
+    // 获取当前已处理并缓存的样本数据（已废弃，保留用于兼容）
+    if (false && m_stageDataCache.isEmpty()) {
         QMessageBox::warning(this, tr("提示"), tr("请先点击“处理并绘图”按钮处理数据。"));
         return;
     }
 
-    // 收集所有可见样本的Derivative阶段曲线（工序大热重用RawData）
+    // 对每条曲线进行处理（裁剪、归一化、平滑、微分），但不绘图
     QList<QPair<int, QSharedPointer<Curve>>> candidateCurves;
-    auto getCurveFromStage = [](const SampleDataFlexible& sample, StageName stage) -> QSharedPointer<Curve> {
-        for (const StageData& s : sample.stages) {
-            if (s.stageName == stage) return s.curve;
+    for (const auto& curveData : allCurves) {
+        int sampleId = curveData.first;
+        const QVector<double>& x = curveData.second.first;
+        const QVector<double>& y = curveData.second.second;
+        
+        if (x.isEmpty() || y.isEmpty() || x.size() != y.size()) {
+            WARNING_LOG << "样本" << sampleId << "的曲线数据无效，跳过";
+            continue;
         }
-        return QSharedPointer<Curve>();
-    };
 
-    StageName targetStage = StageName::RawData; // 工序大热重用原始数据
-
-    for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
-        const SampleGroup& group = it.value();
-        for (const SampleDataFlexible& sample : group.sampleDatas) {
-            if (m_visibleSamples.contains(sample.sampleId)) {
-                QSharedPointer<Curve> curve = getCurveFromStage(sample, targetStage);
-                if (!curve.isNull()) {
-                    candidateCurves.append({sample.sampleId, curve});
-                }
-            }
+        // 处理曲线：裁剪、归一化、平滑、微分
+        QSharedPointer<Curve> processedCurve = processCurveForBestSelection(x, y, sampleId, m_currentParams);
+        if (!processedCurve.isNull() && processedCurve->pointCount() > 0) {
+            candidateCurves.append({sampleId, processedCurve});
+        } else {
+            WARNING_LOG << "样本" << sampleId << "的曲线处理失败，跳过";
         }
     }
 
     if (candidateCurves.size() < 2) {
+        QString msg = tr("至少需要2条有效曲线才能选择最优曲线。");
+        msg += tr("\n\n图表中曲线数：%1\n成功处理后的曲线数：%2").arg(allCurves.size()).arg(candidateCurves.size());
+        QMessageBox::warning(this, tr("提示"), msg);
+        return;
+    }
+
+    // 以下代码已废弃，保留用于兼容
+    if (false) {
         QString msg = tr("至少需要2条有效曲线才能选择最优曲线。");
         if (m_visibleSamples.size() >= 2) {
             msg += tr("\n\n当前可见样本数：%1\n实际获取到的曲线数：%2\n\n可能原因：\n1. 新勾选的样本尚未进行处理；\n2. 数据处理未生成目标阶段曲线（如Derivative）。\n\n建议：请重新点击“处理并绘图”按钮。")
@@ -1179,6 +1204,146 @@ void ProcessTgBigDataProcessDialog::onClearCurvesClicked()
     m_visibleSamples.clear();
     updateLegendPanel();
     updateSelectedSamplesList();
+}
+
+QSharedPointer<Curve> ProcessTgBigDataProcessDialog::processCurveForBestSelection(
+    const QVector<double>& x, const QVector<double>& y, int sampleId, const ProcessingParameters& params)
+{
+    // 创建初始曲线
+    QVector<QPointF> points;
+    points.reserve(x.size());
+    for (int i = 0; i < x.size() && i < y.size(); ++i) {
+        points.append(QPointF(x[i], y[i]));
+    }
+    QSharedPointer<Curve> currentCurve = QSharedPointer<Curve>::create(points, "原始数据");
+    currentCurve->setSampleId(sampleId);
+
+    if (!m_processingService) {
+        WARNING_LOG << "DataProcessingService 未初始化";
+        return QSharedPointer<Curve>();
+    }
+
+    // 创建处理步骤实例
+    Clipping clippingStep;
+    Normalization normalizationStep;
+    SavitzkyGolay sgStep;
+    Loess loessStep;
+
+    // 阶段1: 裁剪
+    if (params.clippingEnabled_ProcessTgBig) {
+        QVariantMap clipParams;
+        clipParams["min_x"] = params.clipMinX_ProcessTgBig;
+        clipParams["max_x"] = params.clipMaxX_ProcessTgBig;
+        QString error;
+        ProcessingResult res = clippingStep.process({currentCurve.data()}, clipParams, error);
+        if (!res.namedCurves.isEmpty() && res.namedCurves.contains("clipped")) {
+            currentCurve = QSharedPointer<Curve>(res.namedCurves.value("clipped").first());
+            currentCurve->setSampleId(sampleId);
+        }
+    }
+
+    // 阶段2: 归一化
+    if (params.normalizationEnabled) {
+        QVariantMap normParams;
+        if (params.normalizationMethod == "absmax") {
+            normParams["method"] = "absmax";
+            normParams["rangeMin"] = 0.0;
+            normParams["rangeMax"] = 100.0;
+        }
+        QString error;
+        ProcessingResult res = normalizationStep.process({currentCurve.data()}, normParams, error);
+        if (!res.namedCurves.isEmpty() && res.namedCurves.contains("normalized")) {
+            currentCurve = QSharedPointer<Curve>(res.namedCurves.value("normalized").first());
+            currentCurve->setSampleId(sampleId);
+        }
+    }
+
+    // 阶段3: 平滑
+    if (params.smoothingEnabled) {
+        QString smMethod = params.smoothingMethod;
+        if (smMethod == "savitzky_golay") {
+            QVariantMap smoothParams;
+            int sgWin = params.sgWindowSize;
+            if (sgWin % 2 == 0) sgWin += 1;
+            if (currentCurve && sgWin >= currentCurve->pointCount()) {
+                sgWin = qMax(3, currentCurve->pointCount() - 1);
+                if (sgWin % 2 == 0) sgWin -= 1;
+            }
+            smoothParams["window_size"] = sgWin;
+            smoothParams["poly_order"] = params.sgPolyOrder;
+            smoothParams["derivative_order"] = 0;
+            
+            if (currentCurve && currentCurve->pointCount() > 0 && 
+                smoothParams["window_size"].toInt() > 2 && 
+                smoothParams["window_size"].toInt() <= currentCurve->pointCount()) {
+                QString error;
+                ProcessingResult res = sgStep.process({currentCurve.data()}, smoothParams, error);
+                if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
+                    currentCurve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
+                    currentCurve->setSampleId(sampleId);
+                }
+            }
+        } else if (smMethod == "loess") {
+            QVariantMap smoothParams;
+            smoothParams["fraction"] = params.loessSpan;
+            if (currentCurve && currentCurve->pointCount() > 2) {
+                QString error;
+                ProcessingResult res = loessStep.process({currentCurve.data()}, smoothParams, error);
+                if (!res.namedCurves.isEmpty() && res.namedCurves.contains("smoothed")) {
+                    currentCurve = QSharedPointer<Curve>(res.namedCurves.value("smoothed").first());
+                    currentCurve->setSampleId(sampleId);
+                }
+            }
+        }
+    }
+
+    // 阶段4: 微分
+    if (params.derivativeEnabled) {
+        QString dMethod = params.derivativeMethod;
+        if (dMethod == "derivative_sg") {
+            QVariantMap derivParams;
+            int dWin = params.derivSgWindowSize;
+            if (dWin % 2 == 0) dWin += 1;
+            if (currentCurve && dWin >= currentCurve->pointCount()) {
+                dWin = qMax(3, currentCurve->pointCount() - 1);
+                if (dWin % 2 == 0) dWin -= 1;
+            }
+            derivParams["window_size"] = dWin;
+            derivParams["poly_order"] = params.derivSgPolyOrder;
+            derivParams["derivative_order"] = 1;
+            
+            if (currentCurve && currentCurve->pointCount() > 1 && 
+                derivParams["window_size"].toInt() > 2 && 
+                derivParams["window_size"].toInt() <= currentCurve->pointCount()) {
+                QString error;
+                ProcessingResult res = sgStep.process({currentCurve.data()}, derivParams, error);
+                if (res.namedCurves.contains("derivative1")) {
+                    currentCurve = QSharedPointer<Curve>(res.namedCurves.value("derivative1").first());
+                    currentCurve->setSampleId(sampleId);
+                }
+            }
+        } else if (dMethod == "first_diff") {
+            if (currentCurve && currentCurve->pointCount() > 1) {
+                QVector<QPointF> src = currentCurve->data();
+                QVector<QPointF> diff;
+                diff.reserve(src.size());
+                for (int i = 0; i < src.size(); ++i) {
+                    if (i == 0) { 
+                        diff.append(QPointF(src[i].x(), 0.0)); 
+                        continue; 
+                    }
+                    double dx = src[i].x() - src[i-1].x(); 
+                    if (qAbs(dx) < 1e-12) dx = 1.0;
+                    double dy = src[i].y() - src[i-1].y();
+                    diff.append(QPointF(src[i].x(), dy / dx));
+                }
+                currentCurve = QSharedPointer<Curve>::create(diff, currentCurve->name() + tr(" (一阶差分)"));
+                currentCurve->setSampleId(sampleId);
+            }
+        }
+    }
+
+    return currentCurve;
 }
 
 

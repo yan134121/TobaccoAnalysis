@@ -3,10 +3,13 @@
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QFileInfo>
+#include <QTimer>
+#include <QApplication>
 
 ExcelPreviewDialog::ExcelPreviewDialog(const QString& filePath, QWidget *parent)
     : QDialog(parent)
     , m_filePath(filePath)
+    , m_xlsxDocument(nullptr)
 {
     setWindowTitle(tr("Excel文件预览 - %1").arg(QFileInfo(filePath).fileName()));
     setMinimumSize(800, 600);
@@ -61,28 +64,47 @@ ExcelPreviewDialog::ExcelPreviewDialog(const QString& filePath, QWidget *parent)
             this, &ExcelPreviewDialog::on_refreshButton_clicked);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
 
-    // 加载Excel文件
-    loadExcelFile();
+    // 延迟加载Excel文件，避免阻塞UI响应
+    m_statusLabel->setText(tr("正在加载文件..."));
+    QTimer::singleShot(0, this, [this]() {
+        loadExcelFile();
+    });
 }
 
 ExcelPreviewDialog::~ExcelPreviewDialog()
 {
+    // 释放缓存的Document对象
+    if (m_xlsxDocument) {
+        delete m_xlsxDocument;
+        m_xlsxDocument = nullptr;
+    }
 }
 
 void ExcelPreviewDialog::loadExcelFile()
 {
-    QXlsx::Document xlsx(m_filePath);
-    if (!xlsx.load()) {
+    // 如果已经有缓存的Document，先释放
+    if (m_xlsxDocument) {
+        delete m_xlsxDocument;
+        m_xlsxDocument = nullptr;
+    }
+    
+    // 创建并加载Document（只加载一次，后续复用）
+    m_xlsxDocument = new QXlsx::Document(m_filePath);
+    if (!m_xlsxDocument->load()) {
         QMessageBox::critical(this, tr("错误"), tr("无法打开Excel文件:\n%1").arg(m_filePath));
         m_statusLabel->setText(tr("无法加载文件"));
+        delete m_xlsxDocument;
+        m_xlsxDocument = nullptr;
         return;
     }
 
-    // 获取所有工作表名称
-    m_sheetNames = xlsx.sheetNames();
+    // 获取所有工作表名称（这个操作很快，只读取文件头信息）
+    m_sheetNames = m_xlsxDocument->sheetNames();
     if (m_sheetNames.isEmpty()) {
         QMessageBox::warning(this, tr("警告"), tr("Excel文件中没有工作表。"));
         m_statusLabel->setText(tr("文件中没有工作表"));
+        delete m_xlsxDocument;
+        m_xlsxDocument = nullptr;
         return;
     }
 
@@ -90,7 +112,7 @@ void ExcelPreviewDialog::loadExcelFile()
     m_sheetComboBox->clear();
     m_sheetComboBox->addItems(m_sheetNames);
 
-    // 加载第一个工作表
+    // 加载第一个工作表（使用缓存的Document）
     if (m_sheetComboBox->count() > 0) {
         loadSheet(0);
     }
@@ -102,28 +124,29 @@ void ExcelPreviewDialog::loadSheet(int sheetIndex)
         return;
     }
 
-    QXlsx::Document xlsx(m_filePath);
-    if (!xlsx.load()) {
-        m_statusLabel->setText(tr("无法重新加载文件"));
+    // 使用缓存的Document，避免重复加载文件
+    if (!m_xlsxDocument) {
+        m_statusLabel->setText(tr("文件未加载"));
         return;
     }
 
-    // 选择工作表
+    // 选择工作表（使用已缓存的Document）
     QString sheetName = m_sheetNames.at(sheetIndex);
-    if (!xlsx.selectSheet(sheetName)) {
+    if (!m_xlsxDocument->selectSheet(sheetName)) {
         m_statusLabel->setText(tr("无法选择工作表: %1").arg(sheetName));
         return;
     }
 
-    QXlsx::Worksheet* worksheet = xlsx.currentWorksheet();
+    QXlsx::Worksheet* worksheet = m_xlsxDocument->currentWorksheet();
     if (!worksheet) {
         m_statusLabel->setText(tr("工作表无效"));
         return;
     }
-
-    // 获取工作表范围
-    QXlsx::CellRange range = worksheet->dimension();
     
+    // 更新状态，显示正在加载
+    m_statusLabel->setText(tr("正在加载工作表: %1...").arg(sheetName));
+    QApplication::processEvents(); // 更新UI显示
+
     // 固定显示前50行、10列
     const int maxPreviewRows = 50;
     const int maxPreviewCols = 10;
@@ -142,27 +165,33 @@ void ExcelPreviewDialog::loadSheet(int sheetIndex)
     }
     m_model->setHorizontalHeaderLabels(headers);
 
-    // 获取实际数据的行数和列数
+    // 直接读取前50行数据，不调用dimension()以避免扫描整个工作表
     int actualRowCount = 0;
     int actualColCount = 0;
-    if (range.isValid()) {
-        actualRowCount = range.rowCount();
-        actualColCount = range.columnCount();
-    }
-
-    // 读取数据（最多50行，10列）
+    
     for (int row = 1; row <= maxPreviewRows; ++row) {
+        bool hasDataInRow = false;
+        int maxColInRow = 0;
+        
         for (int col = 1; col <= maxPreviewCols; ++col) {
-            QString cellText;
-            // 只有当行和列在有效范围内时才读取数据
-            if (range.isValid() && row <= actualRowCount && col <= actualColCount) {
-                QVariant cellValue = worksheet->read(row, col);
-                cellText = cellValue.toString();
+            QVariant cellValue = worksheet->read(row, col);
+            QString cellText = cellValue.toString();
+            
+            if (!cellText.isEmpty()) {
+                hasDataInRow = true;
+                maxColInRow = qMax(maxColInRow, col);
             }
-            // 如果数据不存在或超出范围，cellText 为空字符串
             
             QStandardItem* item = new QStandardItem(cellText);
             m_model->setItem(row - 1, col - 1, item);
+        }
+        
+        if (hasDataInRow) {
+            actualRowCount = row;
+            actualColCount = qMax(actualColCount, maxColInRow);
+        } else if (row > 1) {
+            // 如果遇到空行且不是第一行，可以提前停止（可选优化）
+            // 但为了保持一致性，仍然读取到50行
         }
     }
 
@@ -175,12 +204,12 @@ void ExcelPreviewDialog::loadSheet(int sheetIndex)
     m_tableView->resizeColumnsToContents();
 
     // 更新状态标签
-    if (range.isValid()) {
-        if (actualRowCount > maxPreviewRows || actualColCount > maxPreviewCols) {
-            m_statusLabel->setText(tr("工作表: %1 | 显示前 %2/%3 行, 前 %4/%5 列")
+    if (actualRowCount > 0) {
+        if (actualRowCount >= maxPreviewRows || actualColCount >= maxPreviewCols) {
+            m_statusLabel->setText(tr("工作表: %1 | 显示前 %2 行, 前 %3 列（可能还有更多数据）")
                                    .arg(sheetName)
-                                   .arg(maxPreviewRows).arg(actualRowCount)
-                                   .arg(maxPreviewCols).arg(actualColCount));
+                                   .arg(maxPreviewRows)
+                                   .arg(maxPreviewCols));
         } else {
             m_statusLabel->setText(tr("工作表: %1 | 共 %2 行, %3 列")
                                    .arg(sheetName)
@@ -188,7 +217,7 @@ void ExcelPreviewDialog::loadSheet(int sheetIndex)
                                    .arg(actualColCount));
         }
     } else {
-        // 工作表为空，仍然显示50行10列的空白表格
+        // 工作表为空
         m_statusLabel->setText(tr("工作表 '%1' 为空或无效").arg(sheetName));
     }
 }

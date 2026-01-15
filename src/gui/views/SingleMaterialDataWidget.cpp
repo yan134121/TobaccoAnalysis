@@ -1151,11 +1151,13 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
         QEventLoop loop;
         connect(&columnDialog, &QDialog::finished, &loop, &QEventLoop::quit);
         // 使用定时器定期处理事件，确保预览对话框可以接收用户交互
+        // 增加间隔时间到100ms，减少CPU占用
         QTimer timer;
         timer.setSingleShot(false);
-        timer.setInterval(50); // 每50ms处理一次事件
+        timer.setInterval(100); // 每100ms处理一次事件（从50ms增加到100ms）
         connect(&timer, &QTimer::timeout, [&columnDialog, &loop]() {
-            QApplication::processEvents();
+            // 只处理挂起的事件，不阻塞
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers, 10);
             if (!columnDialog.isVisible()) {
                 loop.quit();
             }
@@ -1355,7 +1357,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
 
         columnLayout->addLayout(columnFormLayout);
 
-        // 添加预览文件按钮
+        // 添加预览文件按钮（与小热重导入数据一致）
         QPushButton* previewButton = new QPushButton(tr("预览文件"), &columnDialog);
         columnLayout->addWidget(previewButton);
         QObject::connect(previewButton, &QPushButton::clicked, &columnDialog, [this, filePath]() {
@@ -1382,11 +1384,13 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
         QEventLoop loop;
         connect(&columnDialog, &QDialog::finished, &loop, &QEventLoop::quit);
         // 使用定时器定期处理事件，确保预览对话框可以接收用户交互
+        // 增加间隔时间到100ms，减少CPU占用
         QTimer timer;
         timer.setSingleShot(false);
-        timer.setInterval(50); // 每50ms处理一次事件
+        timer.setInterval(100); // 每100ms处理一次事件（从50ms增加到100ms）
         connect(&timer, &QTimer::timeout, [&columnDialog, &loop]() {
-            QApplication::processEvents();
+            // 只处理挂起的事件，不阻塞
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers, 10);
             if (!columnDialog.isVisible()) {
                 loop.quit();
             }

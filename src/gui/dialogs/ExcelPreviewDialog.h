@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include "third_party/QXlsx/header/xlsxdocument.h"
 
 class ExcelPreviewDialog : public QDialog
 {
@@ -34,6 +35,9 @@ private:
     
     // 存储工作表名称列表
     QStringList m_sheetNames;
+    
+    // 缓存Document对象，避免重复加载文件
+    QXlsx::Document* m_xlsxDocument;
 };
 
 #endif // EXCELPREVIEWDIALOG_H

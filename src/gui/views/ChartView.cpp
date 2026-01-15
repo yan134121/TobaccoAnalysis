@@ -1472,6 +1472,43 @@ QVector<QPair<QVector<double>, QVector<double>>> ChartView::getSelectedCurvesDat
     return selectedData;
 }
 
+QList<QPair<int, QPair<QVector<double>, QVector<double>>>> ChartView::getSelectedCurvesWithSampleIds() const
+{
+    QList<QPair<int, QPair<QVector<double>, QVector<double>>>> selectedData;
+    
+    // 安全检查
+    if (!m_plot) {
+        WARNING_LOG << "获取选中曲线数据失败：m_plot为空指针";
+        return selectedData;
+    }
+    
+    for (int i = 0; i < m_plot->graphCount(); ++i) {
+        QCPGraph* graph = m_plot->graph(i);
+        if (graph && graph->selected()) {
+            QVector<double> xData, yData;
+            
+            // 获取图形的数据点
+            for (int j = 0; j < graph->data()->size(); ++j) {
+                xData.append(graph->data()->at(j)->key);
+                yData.append(graph->data()->at(j)->value);
+            }
+            
+            // 查找对应的样本ID
+            int sampleId = -1;
+            for (auto it = m_sampleGraphs.constBegin(); it != m_sampleGraphs.constEnd(); ++it) {
+                if (it.value() == graph) {
+                    sampleId = it.key();
+                    break;
+                }
+            }
+            
+            selectedData.append(qMakePair(sampleId, qMakePair(xData, yData)));
+        }
+    }
+    
+    return selectedData;
+}
+
 bool ChartView::exportDataToCSV(const QString& filePath) const
 {
     DEBUG_LOG;

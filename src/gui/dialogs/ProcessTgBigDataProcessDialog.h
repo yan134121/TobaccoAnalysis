@@ -310,8 +310,8 @@ DataProcessingService* m_processingService = nullptr; // 指向后台服务
     bool m_autoEnsureDerivative = false;
     ProcessingParameters m_backupParamsForAuto;
 
-
-
+    // 处理单条曲线（裁剪、归一化、平滑、微分），返回最终的微分曲线（不绘图）
+    QSharedPointer<Curve> processCurveForBestSelection(const QVector<double>& x, const QVector<double>& y, int sampleId, const ProcessingParameters& params);
 
 };
 

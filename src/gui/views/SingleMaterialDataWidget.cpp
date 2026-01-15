@@ -35,6 +35,7 @@
 #include "src/gui/dialogs/DictionaryListDialog.h"
 #include "src/gui/dialogs/SampleListDialog.h"
 #include "src/gui/dialogs/ExcelPreviewDialog.h"
+#include "src/gui/dialogs/CsvPreviewDialog.h"
 #include "src/gui/charts/LineChartView.h"
 
 // --------------------【Qt 模块基础库】--------------------
@@ -744,12 +745,50 @@ void SingleMaterialDataWidget::on_importTgBigDataButton_clicked()
 
         columnLayout->addLayout(columnFormLayout);
 
+        // 添加预览文件按钮
+        QPushButton* previewButton = new QPushButton(tr("预览文件"), &columnDialog);
+        columnLayout->addWidget(previewButton);
+        QObject::connect(previewButton, &QPushButton::clicked, &columnDialog, [this, dirPath]() {
+            // 直接打开预览对话框，显示文件夹中所有CSV文件的下拉框
+            CsvPreviewDialog* previewDialog = new CsvPreviewDialog(dirPath, this);
+            previewDialog->setAttribute(Qt::WA_DeleteOnClose);
+            previewDialog->setWindowModality(Qt::NonModal);
+            // 使用Qt::Dialog窗口标志，确保预览窗口可以独立操作
+            previewDialog->setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowMinMaxButtonsHint);
+            previewDialog->show();
+            previewDialog->raise();
+            previewDialog->activateWindow();
+        });
+
         QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         QObject::connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
         QObject::connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
         columnLayout->addWidget(columnButtonBox);
 
-        if (columnDialog.exec() != QDialog::Accepted) {
+        // 使用非模态对话框，允许预览对话框正常操作
+        columnDialog.setWindowModality(Qt::NonModal);
+        columnDialog.show();
+        
+        // 使用事件循环等待对话框关闭，在循环中处理事件以确保预览对话框可以操作
+        QEventLoop loop;
+        connect(&columnDialog, &QDialog::finished, &loop, &QEventLoop::quit);
+        // 使用定时器定期处理事件，确保预览对话框可以接收用户交互
+        // 增加间隔时间到100ms，减少CPU占用
+        QTimer timer;
+        timer.setSingleShot(false);
+        timer.setInterval(100); // 每100ms处理一次事件（从50ms增加到100ms）
+        connect(&timer, &QTimer::timeout, [&columnDialog, &loop]() {
+            // 只处理挂起的事件，不阻塞
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers, 10);
+            if (!columnDialog.isVisible()) {
+                loop.quit();
+            }
+        });
+        timer.start();
+        loop.exec();
+        timer.stop();
+
+        if (columnDialog.result() != QDialog::Accepted) {
             emit statusMessage(tr("用户取消了操作。"), 3000);
             return;
         }
@@ -931,12 +970,50 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
 
         columnLayout->addLayout(columnFormLayout);
 
+        // 添加预览文件按钮
+        QPushButton* previewButton = new QPushButton(tr("预览文件"), &columnDialog);
+        columnLayout->addWidget(previewButton);
+        QObject::connect(previewButton, &QPushButton::clicked, &columnDialog, [this, dirPath]() {
+            // 直接打开预览对话框，显示文件夹中所有CSV文件的下拉框
+            CsvPreviewDialog* previewDialog = new CsvPreviewDialog(dirPath, this);
+            previewDialog->setAttribute(Qt::WA_DeleteOnClose);
+            previewDialog->setWindowModality(Qt::NonModal);
+            // 使用Qt::Dialog窗口标志，确保预览窗口可以独立操作
+            previewDialog->setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowMinMaxButtonsHint);
+            previewDialog->show();
+            previewDialog->raise();
+            previewDialog->activateWindow();
+        });
+
         QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         QObject::connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
         QObject::connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
         columnLayout->addWidget(columnButtonBox);
 
-        if (columnDialog.exec() != QDialog::Accepted) {
+        // 使用非模态对话框，允许预览对话框正常操作
+        columnDialog.setWindowModality(Qt::NonModal);
+        columnDialog.show();
+        
+        // 使用事件循环等待对话框关闭，在循环中处理事件以确保预览对话框可以操作
+        QEventLoop loop;
+        connect(&columnDialog, &QDialog::finished, &loop, &QEventLoop::quit);
+        // 使用定时器定期处理事件，确保预览对话框可以接收用户交互
+        // 增加间隔时间到100ms，减少CPU占用
+        QTimer timer;
+        timer.setSingleShot(false);
+        timer.setInterval(100); // 每100ms处理一次事件（从50ms增加到100ms）
+        connect(&timer, &QTimer::timeout, [&columnDialog, &loop]() {
+            // 只处理挂起的事件，不阻塞
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers, 10);
+            if (!columnDialog.isVisible()) {
+                loop.quit();
+            }
+        });
+        timer.start();
+        loop.exec();
+        timer.stop();
+
+        if (columnDialog.result() != QDialog::Accepted) {
             emit statusMessage(tr("已取消导入操作。"), 3000);
             return;
         }

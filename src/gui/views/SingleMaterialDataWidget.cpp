@@ -34,6 +34,7 @@
 #include "src/gui/dialogs/BatchListDialog.h"
 #include "src/gui/dialogs/DictionaryListDialog.h"
 #include "src/gui/dialogs/SampleListDialog.h"
+#include "src/gui/dialogs/ExcelPreviewDialog.h"
 #include "src/gui/charts/LineChartView.h"
 
 // --------------------【Qt 模块基础库】--------------------
@@ -48,6 +49,7 @@
 #include <QSpinBox>
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QPushButton>
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QDateTime>
@@ -55,8 +57,12 @@
 #include <QSqlError>
 #include <QJsonDocument>
 #include <QRegularExpression>
+#include <QEventLoop>
 #include <QTextStream>
 #include <QDateEdit>
+#include <QTimer>
+#include <QApplication>
+#include <QThread>
 
 // --------------------【外部库】--------------------
 #include "third_party/QXlsx/header/xlsxdocument.h"
@@ -1084,7 +1090,7 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
         return;
     }
 
-    // 2. 列选择（可选）：增加“不选择（自动识别）”
+    // 2. 列选择（可选）：增加"不选择（自动识别）"
     bool useCustomColumns = false;
     int xColumn = 0;   // 0 表示递增生成
     int yColumn = 3;   // DTG
@@ -1095,7 +1101,7 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
         QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
         QFormLayout* columnFormLayout = new QFormLayout();
 
-        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（自动查找“温度”作为X轴，自动查找“dtg”作为Y轴。）"));
+        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（自动查找'温度'作为X轴，自动查找'dtg'作为Y轴。）"));
         noSelectCheckBox->setChecked(true);
         columnLayout->addWidget(noSelectCheckBox);
 
@@ -1118,12 +1124,47 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
 
         columnLayout->addLayout(columnFormLayout);
 
+        // 添加预览文件按钮
+        QPushButton* previewButton = new QPushButton(tr("预览文件"), &columnDialog);
+        columnLayout->addWidget(previewButton);
+        QObject::connect(previewButton, &QPushButton::clicked, &columnDialog, [this, filePath]() {
+            ExcelPreviewDialog* previewDialog = new ExcelPreviewDialog(filePath, this);
+            previewDialog->setAttribute(Qt::WA_DeleteOnClose);
+            previewDialog->setWindowModality(Qt::NonModal);
+            // 使用Qt::Dialog窗口标志，确保预览窗口可以独立操作
+            previewDialog->setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowMinMaxButtonsHint);
+            previewDialog->show();
+            previewDialog->raise();
+            previewDialog->activateWindow();
+        });
+
         QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
         connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
         columnLayout->addWidget(columnButtonBox);
 
-        if (columnDialog.exec() != QDialog::Accepted) {
+        // 使用非模态对话框，允许预览对话框正常操作
+        columnDialog.setWindowModality(Qt::NonModal);
+        columnDialog.show();
+        
+        // 使用事件循环等待对话框关闭，在循环中处理事件以确保预览对话框可以操作
+        QEventLoop loop;
+        connect(&columnDialog, &QDialog::finished, &loop, &QEventLoop::quit);
+        // 使用定时器定期处理事件，确保预览对话框可以接收用户交互
+        QTimer timer;
+        timer.setSingleShot(false);
+        timer.setInterval(50); // 每50ms处理一次事件
+        connect(&timer, &QTimer::timeout, [&columnDialog, &loop]() {
+            QApplication::processEvents();
+            if (!columnDialog.isVisible()) {
+                loop.quit();
+            }
+        });
+        timer.start();
+        loop.exec();
+        timer.stop();
+
+        if (columnDialog.result() != QDialog::Accepted) {
             emit statusMessage(tr("用户取消了操作。"), 3000);
             return;
         }
@@ -1133,7 +1174,7 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
         yColumn = yColumnSpinBox->value();
     }
 
-    // 3. 创建输入对话框获取批次代码和检测日期（烟牌号固定为“小热重”）
+    // 3. 创建输入对话框获取批次代码和检测日期（烟牌号固定为"小热重"）
     QDialog inputDialog(this);
     inputDialog.setWindowTitle(tr("输入小热重样本信息"));
     
@@ -1280,7 +1321,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
         return;
     }
 
-    // 列选择（可选）：增加“不选择（自动识别）”
+    // 列选择（可选）：增加"不选择（自动识别）"
     bool useCustomColumns = false;
     int xColumn = 0;  // 0 表示递增生成
     int yColumn = 2;  // weight
@@ -1291,7 +1332,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
         QVBoxLayout* columnLayout = new QVBoxLayout(&columnDialog);
         QFormLayout* columnFormLayout = new QFormLayout();
 
-        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（自动查找“温度”作为X轴，自动查找“重量/weight”作为Y轴。）"));
+        QCheckBox* noSelectCheckBox = new QCheckBox(tr("不选择（自动查找'温度'作为X轴，自动查找'重量/weight'作为Y轴。）"));
         noSelectCheckBox->setChecked(true);
         columnLayout->addWidget(noSelectCheckBox);
 
@@ -1314,12 +1355,47 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
 
         columnLayout->addLayout(columnFormLayout);
 
+        // 添加预览文件按钮
+        QPushButton* previewButton = new QPushButton(tr("预览文件"), &columnDialog);
+        columnLayout->addWidget(previewButton);
+        QObject::connect(previewButton, &QPushButton::clicked, &columnDialog, [this, filePath]() {
+            ExcelPreviewDialog* previewDialog = new ExcelPreviewDialog(filePath, this);
+            previewDialog->setAttribute(Qt::WA_DeleteOnClose);
+            previewDialog->setWindowModality(Qt::NonModal);
+            // 使用Qt::Dialog窗口标志，确保预览窗口可以独立操作
+            previewDialog->setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowMinMaxButtonsHint);
+            previewDialog->show();
+            previewDialog->raise();
+            previewDialog->activateWindow();
+        });
+
         QDialogButtonBox* columnButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         connect(columnButtonBox, &QDialogButtonBox::accepted, &columnDialog, &QDialog::accept);
         connect(columnButtonBox, &QDialogButtonBox::rejected, &columnDialog, &QDialog::reject);
         columnLayout->addWidget(columnButtonBox);
 
-        if (columnDialog.exec() != QDialog::Accepted) {
+        // 使用非模态对话框，允许预览对话框正常操作
+        columnDialog.setWindowModality(Qt::NonModal);
+        columnDialog.show();
+        
+        // 使用事件循环等待对话框关闭，在循环中处理事件以确保预览对话框可以操作
+        QEventLoop loop;
+        connect(&columnDialog, &QDialog::finished, &loop, &QEventLoop::quit);
+        // 使用定时器定期处理事件，确保预览对话框可以接收用户交互
+        QTimer timer;
+        timer.setSingleShot(false);
+        timer.setInterval(50); // 每50ms处理一次事件
+        connect(&timer, &QTimer::timeout, [&columnDialog, &loop]() {
+            QApplication::processEvents();
+            if (!columnDialog.isVisible()) {
+                loop.quit();
+            }
+        });
+        timer.start();
+        loop.exec();
+        timer.stop();
+
+        if (columnDialog.result() != QDialog::Accepted) {
             emit statusMessage(tr("用户取消了操作。"), 3000);
             return;
         }

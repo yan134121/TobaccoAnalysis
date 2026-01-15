@@ -115,6 +115,11 @@ set(DIALOG_FILES
     "${PROJECT_SOURCE_DIR}/gui/dialogs/SampleListDialog.h"
     "${PROJECT_SOURCE_DIR}/gui/dialogs/samplelistdialog.ui"
 )
+# ExcelPreviewDialog 文件（新添加）
+list(APPEND DIALOG_FILES
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/ExcelPreviewDialog.cpp"
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/ExcelPreviewDialog.h"
+)
 
 
 

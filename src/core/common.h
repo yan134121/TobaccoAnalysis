@@ -91,6 +91,9 @@ struct ProcessingParameters {
     bool clippingEnabled_ProcessTgBig = true;
     double clipMinX_ProcessTgBig = 60.0;
     double clipMaxX_ProcessTgBig = 400.0;
+    bool clippingEnabled_TgSmallRaw = true;
+    double clipMinX_TgSmallRaw = 60.0;
+    double clipMaxX_TgSmallRaw = 400.0;
 
     // 归一化参数
     bool normalizationEnabled = true;

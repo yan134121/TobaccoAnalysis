@@ -57,7 +57,8 @@ TgBigDataProcessDialog::TgBigDataProcessDialog(QWidget *parent, AppInitializer* 
 
 
     // 提前创建参数设置窗口
-    m_paramDialog = new TgBigParameterSettingsDialog(m_currentParams, this);
+    // 大热重使用默认的 TG_BIG 裁剪参数
+    m_paramDialog = new TgBigParameterSettingsDialog(m_currentParams, QStringLiteral("TG_BIG"), this);
 
     // 连接信号槽（只需一次）
     connect(m_paramDialog, &TgBigParameterSettingsDialog::parametersApplied,

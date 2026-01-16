@@ -62,7 +62,8 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent,
 
     // 提前创建参数设置窗口
     if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
-        m_bigParamDialog = new TgBigParameterSettingsDialog(m_currentParams, this);
+        // 为小热重（原始数据）指定使用 TG_SMALL_RAW 裁剪参数
+        m_bigParamDialog = new TgBigParameterSettingsDialog(m_currentParams, QStringLiteral("TG_SMALL_RAW"), this);
         m_bigParamDialog->setWindowTitle(tr("%1处理参数设置").arg(m_dataTypeName));
         connect(m_bigParamDialog, &TgBigParameterSettingsDialog::parametersApplied,
                 this, &TgSmallDataProcessDialog::onParametersApplied);

@@ -22,9 +22,12 @@
 //     : QDialog(parent)
 // {
 // 主要构造函数的实现
-TgBigParameterSettingsDialog::TgBigParameterSettingsDialog(const ProcessingParameters& initialParams, QWidget *parent)
+TgBigParameterSettingsDialog::TgBigParameterSettingsDialog(const ProcessingParameters& initialParams, 
+                                                           const QString& dataTypeForClipping,
+                                                           QWidget *parent)
     : QDialog(parent)
     , m_currentParams(initialParams)
+    , m_dataTypeForClipping(dataTypeForClipping)
 {
     setupUi();
     setParameters(initialParams);
@@ -432,9 +435,18 @@ void TgBigParameterSettingsDialog::setParameters(const ProcessingParameters &par
 {
     // 裁剪
     // 使用“大热重”独立裁剪参数
-    m_clipEnabledCheck->setChecked(params.clippingEnabled_TgBig);
-    m_clipMinSpinBox->setValue(params.clipMinX_TgBig);
-    m_clipMaxSpinBox->setValue(params.clipMaxX_TgBig);
+    // 根据数据类型使用对应的独立裁剪参数
+    if (m_dataTypeForClipping == QStringLiteral("TG_SMALL_RAW")) {
+        // 使用"小热重（原始数据）"独立裁剪参数
+        m_clipEnabledCheck->setChecked(params.clippingEnabled_TgSmallRaw);
+        m_clipMinSpinBox->setValue(params.clipMinX_TgSmallRaw);
+        m_clipMaxSpinBox->setValue(params.clipMaxX_TgSmallRaw);
+    } else {
+        // 默认使用"大热重"独立裁剪参数
+        m_clipEnabledCheck->setChecked(params.clippingEnabled_TgBig);
+        m_clipMinSpinBox->setValue(params.clipMinX_TgBig);
+        m_clipMaxSpinBox->setValue(params.clipMaxX_TgBig);
+    }
 
     // 归一化
     m_normEnabledCheck->setChecked(params.normalizationEnabled);
@@ -493,9 +505,18 @@ ProcessingParameters TgBigParameterSettingsDialog::getParameters() const
 
     // 从UI控件收集数据并填充结构体
     // 写入“大热重”独立裁剪参数
-    params.clippingEnabled_TgBig = m_clipEnabledCheck->isChecked();
-    params.clipMinX_TgBig = m_clipMinSpinBox->value();
-    params.clipMaxX_TgBig = m_clipMaxSpinBox->value();
+    // 根据数据类型写入对应的独立裁剪参数
+    if (m_dataTypeForClipping == QStringLiteral("TG_SMALL_RAW")) {
+        // 写入"小热重（原始数据）"独立裁剪参数
+        params.clippingEnabled_TgSmallRaw = m_clipEnabledCheck->isChecked();
+        params.clipMinX_TgSmallRaw = m_clipMinSpinBox->value();
+        params.clipMaxX_TgSmallRaw = m_clipMaxSpinBox->value();
+    } else {
+        // 默认写入"大热重"独立裁剪参数
+        params.clippingEnabled_TgBig = m_clipEnabledCheck->isChecked();
+        params.clipMinX_TgBig = m_clipMinSpinBox->value();
+        params.clipMaxX_TgBig = m_clipMaxSpinBox->value();
+    }
     
     params.normalizationEnabled = m_normEnabledCheck->isChecked();
     params.normalizationMethod = m_normMethodCombo->currentData().toString();

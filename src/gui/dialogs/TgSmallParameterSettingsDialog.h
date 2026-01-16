@@ -70,10 +70,10 @@ private:
     QTabWidget* m_tabWidget;
     QDialogButtonBox* m_buttonBox;
     
-    // // 裁剪Tab
-    // QCheckBox* m_clipEnabledCheck;
-    // QDoubleSpinBox* m_clipMinSpinBox;
-    // QDoubleSpinBox* m_clipMaxSpinBox;
+    // 裁剪Tab
+    QCheckBox* m_clipEnabledCheck;
+    QDoubleSpinBox* m_clipMinSpinBox;
+    QDoubleSpinBox* m_clipMaxSpinBox;
     
     // // 归一化Tab
     // QCheckBox* m_normEnabledCheck;

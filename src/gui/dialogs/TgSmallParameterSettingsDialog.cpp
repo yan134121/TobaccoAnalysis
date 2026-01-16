@@ -46,7 +46,7 @@ void TgSmallParameterSettingsDialog::setupUi()
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
     m_tabWidget = new QTabWidget(this);
-    // m_tabWidget->addTab(createClippingTab(), tr("裁剪"));
+    m_tabWidget->addTab(createClippingTab(), tr("裁剪"));
     // m_tabWidget->addTab(createNormalizationTab(), tr("归一化"));
     // m_tabWidget->addTab(createSmoothingTab(), tr("平滑"));
     // m_tabWidget->addTab(createDerivativeTab(), tr("微分"));
@@ -75,6 +75,25 @@ void TgSmallParameterSettingsDialog::setupUi()
     setLayout(mainLayout);
 }
 
+// 裁剪参数设置页
+QWidget* TgSmallParameterSettingsDialog::createClippingTab()
+{
+    QWidget* widget = new QWidget;
+    QFormLayout* layout = new QFormLayout(widget);
+    
+    m_clipEnabledCheck = new QCheckBox(tr("启用裁剪"));
+    m_clipMinSpinBox = new QDoubleSpinBox;
+    m_clipMaxSpinBox = new QDoubleSpinBox;
+
+    m_clipMinSpinBox->setRange(0, 10000);
+    m_clipMaxSpinBox->setRange(0, 10000);
+
+    layout->addRow(m_clipEnabledCheck);
+    layout->addRow(tr("X轴最小值:"), m_clipMinSpinBox);
+    layout->addRow(tr("X轴最大值:"), m_clipMaxSpinBox);
+    
+    return widget;
+}
 
 // 差异度计算
 QWidget* TgSmallParameterSettingsDialog::createDifferenceTab()
@@ -198,10 +217,17 @@ QWidget* TgSmallParameterSettingsDialog::createDifferenceTab()
 
 void TgSmallParameterSettingsDialog::setParameters(const ProcessingParameters &params)
 {
-    // // 裁剪
-    // m_clipEnabledCheck->setChecked(params.clippingEnabled);
-    // m_clipMinSpinBox->setValue(params.clipMinX);
-    // m_clipMaxSpinBox->setValue(params.clipMaxX);
+    // 裁剪
+    // 使用"小热重（原始数据）"独立裁剪参数
+    if (m_clipEnabledCheck) {
+        m_clipEnabledCheck->setChecked(params.clippingEnabled_TgSmallRaw);
+    }
+    if (m_clipMinSpinBox) {
+        m_clipMinSpinBox->setValue(params.clipMinX_TgSmallRaw);
+    }
+    if (m_clipMaxSpinBox) {
+        m_clipMaxSpinBox->setValue(params.clipMaxX_TgSmallRaw);
+    }
 
     // // 归一化
     // m_normEnabledCheck->setChecked(params.normalizationEnabled);
@@ -228,10 +254,17 @@ ProcessingParameters TgSmallParameterSettingsDialog::getParameters() const
 {
     ProcessingParameters params;
 
-    // // 从UI控件收集数据并填充结构体
-    // params.clippingEnabled = m_clipEnabledCheck->isChecked();
-    // params.clipMinX = m_clipMinSpinBox->value();
-    // params.clipMaxX = m_clipMaxSpinBox->value();
+    // 从UI控件收集数据并填充结构体
+    // 写入"小热重（原始数据）"独立裁剪参数
+    if (m_clipEnabledCheck) {
+        params.clippingEnabled_TgSmallRaw = m_clipEnabledCheck->isChecked();
+    }
+    if (m_clipMinSpinBox) {
+        params.clipMinX_TgSmallRaw = m_clipMinSpinBox->value();
+    }
+    if (m_clipMaxSpinBox) {
+        params.clipMaxX_TgSmallRaw = m_clipMaxSpinBox->value();
+    }
     
     // params.normalizationEnabled = m_normEnabledCheck->isChecked();
     // params.normalizationMethod = m_normMethodCombo->currentData().toString();

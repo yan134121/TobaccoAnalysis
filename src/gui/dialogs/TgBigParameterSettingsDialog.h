@@ -31,11 +31,14 @@ public:
     // : TgBigParameterSettingsDialog(ProcessingParameters(), parent) {}
 
     // 主要构造函数
-    explicit TgBigParameterSettingsDialog(const ProcessingParameters& initialParams = ProcessingParameters(), QWidget *parent = nullptr);
+    // dataTypeForClipping: 用于指定裁剪参数的数据类型，"TG_BIG" 或 "TG_SMALL_RAW"
+    explicit TgBigParameterSettingsDialog(const ProcessingParameters& initialParams = ProcessingParameters(), 
+                                         const QString& dataTypeForClipping = QStringLiteral("TG_BIG"),
+                                         QWidget *parent = nullptr);
     
     // 简化构造函数（委托给主要构造函数）
     explicit TgBigParameterSettingsDialog(QWidget *parent = nullptr)
-        : TgBigParameterSettingsDialog(ProcessingParameters(), parent) {}
+        : TgBigParameterSettingsDialog(ProcessingParameters(), QStringLiteral("TG_BIG"), parent) {}
 
     ~TgBigParameterSettingsDialog();
 
@@ -130,6 +133,7 @@ private:
 
 
     ProcessingParameters m_currentParams; // 添加这个成员变量来存储当前参数
+    QString m_dataTypeForClipping; // 用于指定裁剪参数的数据类型
 };
 
 #endif // TGBIGPARAMETERSETTINGSDIALOG_H

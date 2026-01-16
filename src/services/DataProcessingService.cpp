@@ -208,32 +208,33 @@ SampleDataFlexible DataProcessingService::runTgBigLikePipeline(DataType dataType
     }
 
     // --- 阶段2: 裁剪 ---
-    // 大热重使用独立的裁剪参数组（clippingEnabled_TgBig / clipMinX_TgBig / clipMaxX_TgBig）
-    if (params.clippingEnabled_TgBig) {
+    // 根据数据类型使用对应的独立裁剪参数组
+    bool shouldClip = false;
+    double clipMinX = 0.0;
+    double clipMaxX = 0.0;
+    
+    if (dataType == DataType::TG_BIG) {
+        shouldClip = params.clippingEnabled_TgBig;
+        clipMinX = params.clipMinX_TgBig;
+        clipMaxX = params.clipMaxX_TgBig;
+    } else if (dataType == DataType::TG_SMALL_RAW) {
+        shouldClip = params.clippingEnabled_TgSmallRaw;
+        clipMinX = params.clipMinX_TgSmallRaw;
+        clipMaxX = params.clipMaxX_TgSmallRaw;
+    } else if (dataType == DataType::PROCESS_TG_BIG) {
+        shouldClip = params.clippingEnabled_ProcessTgBig;
+        clipMinX = params.clipMinX_ProcessTgBig;
+        clipMaxX = params.clipMaxX_ProcessTgBig;
+    }
+    
+    if (shouldClip) {
         // DEBUG_LOG << "Clipping enabled";
         if (m_registeredSteps.contains("clipping")) {
             // DEBUG_LOG << "Clipping step registered";
             IProcessingStep* step = m_registeredSteps.value("clipping");
             QVariantMap clipParams;
-            if (dataType == DataType::TG_SMALL_RAW && currentCurve) {
-                const QVector<QPointF> &curveData = currentCurve->data();
-                if (!curveData.isEmpty()) {
-                    double minX = curveData.first().x();
-                    double maxX = curveData.first().x();
-                    for (const auto &point : curveData) {
-                        minX = qMin(minX, point.x());
-                        maxX = qMax(maxX, point.x());
-                    }
-                    clipParams["min_x"] = minX;
-                    clipParams["max_x"] = maxX;
-                } else {
-                    clipParams["min_x"] = params.clipMinX_TgBig;
-                    clipParams["max_x"] = params.clipMaxX_TgBig;
-                }
-            } else {
-                clipParams["min_x"] = params.clipMinX_TgBig;
-                clipParams["max_x"] = params.clipMaxX_TgBig;
-            }
+            clipParams["min_x"] = clipMinX;
+            clipParams["max_x"] = clipMaxX;
 
             // DEBUG_LOG << "Clipping parameters:" << clipParams;
 

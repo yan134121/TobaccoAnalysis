@@ -356,28 +356,30 @@ void TgSmallDifferenceWorkbench::exportToExcel(const QList<QMap<QString, QVarian
         // 设置表头
         xlsx.write(1, 1, "样品前缀");
         xlsx.write(1, 2, "综合评分");
-        xlsx.write(1, 3, "标准化均方根(原始)");
-        xlsx.write(1, 4, "标准化均方根(归一化)");
-        xlsx.write(1, 5, "皮尔逊相关系数(原始)");
-        xlsx.write(1, 6, "皮尔逊相关系数(归一化)");
-        xlsx.write(1, 7, "欧氏距离(原始)");
-        xlsx.write(1, 8, "欧氏距离(归一化)");
-        xlsx.write(1, 9, "排名");
-        xlsx.write(1, 10, "是否全优");
+        xlsx.write(1, 3, "均方根RMSE(原始)");
+        xlsx.write(1, 4, "NRMSE(原始)");
+        xlsx.write(1, 5, "NRMSE(归一化)");
+        xlsx.write(1, 6, "皮尔逊相关系数(原始)");
+        xlsx.write(1, 7, "皮尔逊相关系数(归一化)");
+        xlsx.write(1, 8, "欧氏距离(原始)");
+        xlsx.write(1, 9, "欧氏距离(归一化)");
+        xlsx.write(1, 10, "排名");
+        xlsx.write(1, 11, "是否全优");
         
         // 写入数据行
         int row = 2;
         for (const auto& rowData : data) {
             xlsx.write(row, 1, rowData["sample_prefix"].toString());
             xlsx.write(row, 2, rowData["comprehensive_score"].toString());
-            xlsx.write(row, 3, rowData["rmse_raw"].toString());
-            xlsx.write(row, 4, rowData["rmse_normalized"].toString());
-            xlsx.write(row, 5, rowData["pearson_raw"].toString());
-            xlsx.write(row, 6, rowData["pearson_normalized"].toString());
-            xlsx.write(row, 7, rowData["euclidean_raw"].toString());
-            xlsx.write(row, 8, rowData["euclidean_normalized"].toString());
-            xlsx.write(row, 9, rowData["rank"].toString());
-            xlsx.write(row, 10, rowData["is_optimal"].toBool() ? "是" : "否");
+            xlsx.write(row, 3, rowData["rmse_plain"].toString());
+            xlsx.write(row, 4, rowData["rmse_raw"].toString());
+            xlsx.write(row, 5, rowData["rmse_normalized"].toString());
+            xlsx.write(row, 6, rowData["pearson_raw"].toString());
+            xlsx.write(row, 7, rowData["pearson_normalized"].toString());
+            xlsx.write(row, 8, rowData["euclidean_raw"].toString());
+            xlsx.write(row, 9, rowData["euclidean_normalized"].toString());
+            xlsx.write(row, 10, rowData["rank"].toString());
+            xlsx.write(row, 11, rowData["is_optimal"].toBool() ? "是" : "否");
             row++;
         }
         
@@ -401,12 +403,13 @@ void TgSmallDifferenceWorkbench::exportToExcel(const QList<QMap<QString, QVarian
         out.setGenerateByteOrderMark(true);
         
         // 写入表头
-        out << "样品前缀\t综合评分\t标准化均方根(原始)\t标准化均方根(归一化)\t皮尔逊相关系数(原始)\t皮尔逊相关系数(归一化)\t欧氏距离(原始)\t欧氏距离(归一化)\t排名\t是否全优\n";
+        out << "样品前缀\t综合评分\t均方根RMSE(原始)\tNRMSE(原始)\tNRMSE(归一化)\t皮尔逊相关系数(原始)\t皮尔逊相关系数(归一化)\t欧氏距离(原始)\t欧氏距离(归一化)\t排名\t是否全优\n";
         
         // 写入数据行，使用制表符分隔
         for (const auto& row : data) {
             out << row["sample_prefix"].toString() << "\t"
                 << row["comprehensive_score"].toString() << "\t"
+                << row["rmse_plain"].toString() << "\t"
                 << row["rmse_raw"].toString() << "\t"
                 << row["rmse_normalized"].toString() << "\t"
                 << row["pearson_raw"].toString() << "\t"
@@ -444,10 +447,10 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
 
     // 创建表格
     QTableWidget* tableWidget = new QTableWidget(&dialog);
-    tableWidget->setColumnCount(10);
+    tableWidget->setColumnCount(11);
     QStringList headers;
     headers << "样品前缀" << "综合评分"
-            << "标准化均方根(原始)" << "标准化均方根(归一化)"
+            << "均方根RMSE(原始)" << "NRMSE(原始)" << "NRMSE(归一化)"
             << "皮尔逊相关系数(原始)" << "皮尔逊相关系数(归一化)"
             << "欧氏距离(原始)" << "欧氏距离(归一化)"
             << "排名" << "是否全优";
@@ -458,9 +461,9 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive); // 允许拖拽调整列宽
     tableWidget->horizontalHeader()->setSectionsMovable(true);                       // 允许左右拖动调整列顺序
 
-    // 安装宽度自适应数字显示委托（数值列：1..8）
+    // 安装宽度自适应数字显示委托（数值列：1..9）
     auto* widthDelegate = new WidthAwareNumberDelegate(tableWidget);
-    for (int c = 1; c <= 8; ++c) {
+    for (int c = 1; c <= 9; ++c) {
         tableWidget->setItemDelegateForColumn(c, widthDelegate);
     }
 
@@ -530,6 +533,7 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     struct DiffResult {
         int sampleId;
         QString samplePrefix;
+        double rmsePlain;
         double rmseRaw;
         double pearsonRaw;
         double euclideanRaw;
@@ -553,7 +557,8 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
                                     .arg(sid.batchCode)
                                     .arg(sid.shortCode);
 
-        double rmseRaw = comparer->calculateRMSE(referenceCurve, curve);
+        double rmsePlain = comparer->calculatePlainRMSE(referenceCurve, curve);
+        double rmseRaw = comparer->calculateNRMSE(referenceCurve, curve);
         double pearsonRaw = comparer->calculatePearsonCorrelation(referenceCurve, curve);
         double euclideanRaw = comparer->calculateEuclideanDistance(referenceCurve, curve);
 
@@ -562,7 +567,7 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
         pearsonMin = qMin(pearsonMin, pearsonRaw);
         pearsonMax = qMax(pearsonMax, pearsonRaw);
 
-        diffResults.append({sampleId, samplePrefix, rmseRaw, pearsonRaw, euclideanRaw});
+        diffResults.append({sampleId, samplePrefix, rmsePlain, rmseRaw, pearsonRaw, euclideanRaw});
     }
 
     if (diffResults.isEmpty()) {
@@ -594,6 +599,7 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
         rowData["sample_id"] = res.sampleId;
         rowData["sample_prefix"] = res.samplePrefix;
         rowData["comprehensive_score"] = QString::number(comprehensiveScore, 'f', 16);
+        rowData["rmse_plain"] = QString::number(res.rmsePlain, 'f', 16);
         rowData["rmse_raw"] = QString::number(res.rmseRaw, 'f', 16);
         rowData["rmse_normalized"] = QString::number(rmseNormalized, 'f', 16);
         rowData["pearson_raw"] = QString::number(res.pearsonRaw, 'f', 16);
@@ -624,14 +630,15 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     for (int i = 0; i < resultData.size(); ++i) {
         tableWidget->setItem(i, 0, new QTableWidgetItem(resultData[i]["sample_prefix"].toString()));
         tableWidget->setItem(i, 1, new QTableWidgetItem(resultData[i]["comprehensive_score"].toString()));
-        tableWidget->setItem(i, 2, new QTableWidgetItem(resultData[i]["rmse_raw"].toString()));
-        tableWidget->setItem(i, 3, new QTableWidgetItem(resultData[i]["rmse_normalized"].toString()));
-        tableWidget->setItem(i, 4, new QTableWidgetItem(resultData[i]["pearson_raw"].toString()));
-        tableWidget->setItem(i, 5, new QTableWidgetItem(resultData[i]["pearson_normalized"].toString()));
-        tableWidget->setItem(i, 6, new QTableWidgetItem(resultData[i]["euclidean_raw"].toString()));
-        tableWidget->setItem(i, 7, new QTableWidgetItem(resultData[i]["euclidean_normalized"].toString()));
-        tableWidget->setItem(i, 8, new QTableWidgetItem(QString::number(resultData[i]["rank"].toInt())));
-        tableWidget->setItem(i, 9, new QTableWidgetItem(resultData[i]["is_optimal"].toBool() ? "是" : "否"));
+        tableWidget->setItem(i, 2, new QTableWidgetItem(resultData[i]["rmse_plain"].toString()));
+        tableWidget->setItem(i, 3, new QTableWidgetItem(resultData[i]["rmse_raw"].toString()));
+        tableWidget->setItem(i, 4, new QTableWidgetItem(resultData[i]["rmse_normalized"].toString()));
+        tableWidget->setItem(i, 5, new QTableWidgetItem(resultData[i]["pearson_raw"].toString()));
+        tableWidget->setItem(i, 6, new QTableWidgetItem(resultData[i]["pearson_normalized"].toString()));
+        tableWidget->setItem(i, 7, new QTableWidgetItem(resultData[i]["euclidean_raw"].toString()));
+        tableWidget->setItem(i, 8, new QTableWidgetItem(resultData[i]["euclidean_normalized"].toString()));
+        tableWidget->setItem(i, 9, new QTableWidgetItem(QString::number(resultData[i]["rank"].toInt())));
+        tableWidget->setItem(i, 10, new QTableWidgetItem(resultData[i]["is_optimal"].toBool() ? "是" : "否"));
 
         if (resultData[i]["is_optimal"].toBool()) {
             for (int j = 0; j < tableWidget->columnCount(); ++j)

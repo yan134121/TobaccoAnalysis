@@ -21,8 +21,14 @@ public:
     // 返回所有可用的差异度计算算法的名称
     QMap<QString, QString> availableAlgorithms() const;
     
-    // 计算均方根误差
+    // 计算 NRMSE（RMSE / 参考 Y 范围）；与 calculateNRMSE 等价
     double calculateRMSE(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2);
+
+    // 与 calculateRMSE 相同，语义别名
+    double calculateNRMSE(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2);
+
+    // 未归一化均方根误差 RMSE = sqrt(mean((y2-y1)^2))
+    double calculatePlainRMSE(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2);
     
     // 计算皮尔逊相关系数
     double calculatePearsonCorrelation(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2);

@@ -5,6 +5,7 @@
 #include "services/algorithm/Nrmse.h"
 #include "services/algorithm/Pearson.h"
 #include "services/algorithm/Euclidean.h"
+#include "services/algorithm/PlainRmse.h"
 #include "services/algorithm/Loess.h"
 #include "Logger.h"
 #include <QtMath>
@@ -32,6 +33,9 @@ void SampleComparisonService::registerStrategies()
     
     IDifferenceStrategy* euclidean = new Euclidean();
     m_registeredStrategies[euclidean->algorithmId()] = euclidean;
+
+    IDifferenceStrategy* plainRmse = new PlainRmse();
+    m_registeredStrategies[plainRmse->algorithmId()] = plainRmse;
 }
 
 QMap<QString, QString> SampleComparisonService::availableAlgorithms() const
@@ -53,6 +57,11 @@ double SampleComparisonService::calculateRMSE(QSharedPointer<Curve> curve1, QSha
     return 0.0;
 }
 
+double SampleComparisonService::calculateNRMSE(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2)
+{
+    return calculateRMSE(curve1, curve2);
+}
+
 double SampleComparisonService::calculatePearsonCorrelation(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2)
 {
     // 查找Pearson策略并使用它计算
@@ -68,6 +77,15 @@ double SampleComparisonService::calculateEuclideanDistance(QSharedPointer<Curve>
     // 查找Euclidean策略并使用它计算
     IDifferenceStrategy* strategy = m_registeredStrategies.value("euclidean");
     if (strategy) {
+        return strategy->calculateDifference(*curve1, *curve2, {});
+    }
+    return 0.0;
+}
+
+double SampleComparisonService::calculatePlainRMSE(QSharedPointer<Curve> curve1, QSharedPointer<Curve> curve2)
+{
+    IDifferenceStrategy* strategy = m_registeredStrategies.value(QStringLiteral("plain_rmse"));
+    if (strategy && curve1 && curve2) {
         return strategy->calculateDifference(*curve1, *curve2, {});
     }
     return 0.0;
@@ -109,9 +127,17 @@ QList<DifferenceResultRow> SampleComparisonService::calculateRankingFromCurves(
 
     for (const QString& algId : m_registeredStrategies.keys()) {
         IDifferenceStrategy* strategy = m_registeredStrategies.value(algId);
-        double score = (compCurve == referenceCurve) 
-                        ? 1.0  // 自己和自己的比较直接设为 1.0
-                        : strategy->calculateDifference(*referenceCurve, *compCurve, {});
+        double score;
+        if (compCurve == referenceCurve) {
+            // 自比：RMSE/欧氏应为 0；其余策略保持 1.0 以兼容原逻辑
+            if (algId == QStringLiteral("plain_rmse")) {
+                score = 0.0;
+            } else {
+                score = 1.0;
+            }
+        } else {
+            score = strategy->calculateDifference(*referenceCurve, *compCurve, {});
+        }
         result.scores[algId] = score;
     }
     finalResults.append(result);
@@ -232,7 +258,7 @@ SampleComparisonService::PickBestResult SampleComparisonService::pickBestOfTwo(
     }
 
     // 配对一致性指标
-    result.nrmse = calculateRMSE(curve1, curve2);
+    result.nrmse = calculateNRMSE(curve1, curve2);
     result.pearson = calculatePearsonCorrelation(curve1, curve2);
     result.euclid = calculateEuclideanDistance(curve1, curve2);
 

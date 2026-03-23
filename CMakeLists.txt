@@ -62,7 +62,8 @@ file(GLOB_RECURSE DATA_ACCESS_FILES
 )
 
 # Services: 包含 services/ 目录及其子目录下的所有文件
-file(GLOB_RECURSE SERVICE_FILES 
+# CONFIGURE_DEPENDS：新增/删除匹配源文件时会触发重新配置，避免 GLOB 快照漏掉新 .cpp 导致链接 undefined reference
+file(GLOB_RECURSE SERVICE_FILES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/services/*.cpp" 
     "${PROJECT_SOURCE_DIR}/services/*.h"
     "${PROJECT_SOURCE_DIR}/services/data_import/*.cpp"
@@ -74,6 +75,12 @@ file(GLOB_RECURSE SERVICE_FILES
     "${PROJECT_SOURCE_DIR}/services/analysis/*.cpp"
     "${PROJECT_SOURCE_DIR}/services/analysis/*.h"
 )
+# 显式纳入（防止未重新运行 cmake 时 GLOB 快照仍不含新文件）
+list(APPEND SERVICE_FILES
+    "${PROJECT_SOURCE_DIR}/services/algorithm/PlainRmse.cpp"
+    "${PROJECT_SOURCE_DIR}/services/algorithm/PlainRmse.h"
+)
+list(REMOVE_DUPLICATES SERVICE_FILES)
 
 
 # # GUI: 包含 gui/ 及其所有子目录 (dialogs, views, widgets)

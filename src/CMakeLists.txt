@@ -30,8 +30,8 @@ message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
 message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
 
 # --- 收集所有源文件 ---
-# 定义 src 目录的路径，方便引用
-set(PROJECT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# 本文件位于项目根下的 src/ 目录时，源码根即为当前目录（勿再拼 /src，否则会指向 src/src）
+set(PROJECT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # 使用 file(GLOB_RECURSE ...) 自动查找指定目录下的所有匹配文件。
 # 这意味着，只要您在这些目录中添加了新的 .h, .cpp, .ui 文件，

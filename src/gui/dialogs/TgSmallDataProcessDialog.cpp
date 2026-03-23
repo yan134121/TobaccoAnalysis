@@ -21,8 +21,13 @@
 #include "SingleTobaccoSampleDAO.h" // 修改: 包含对应的头文件
 #include "ColorUtils.h"
 #include "core/singletons/SampleSelectionManager.h"  // 引入集中样本选中管理器
+#include "core/CurveMathUtils.h"
+#include "gui/dialogs/TwoCurvePickDialog.h"
 #include "InfoAutoClose.h"
 #include <QCursor>
+#include <QLabel>
+#include <QLayoutItem>
+#include <algorithm>
 #include <QStyle>
 #include <QStyleOptionViewItem>
 
@@ -479,6 +484,7 @@ void TgSmallDataProcessDialog::addSampleCurve(int sampleId, const QString& sampl
 void TgSmallDataProcessDialog::drawSelectedSampleCurves()
 {
     try {
+        m_sumCompareMode = false;
         DEBUG_LOG << "绘制所有可见样本，数量:" << m_visibleSamples.size();
 
         // 检查图表视图是否初始化
@@ -784,8 +790,9 @@ void TgSmallDataProcessDialog::setupUI()
     // 新增清除曲线按钮
     m_clearCurvesButton = new QPushButton(tr("清除曲线"), tab1Widget);
     m_pickBestCurveButton = new QPushButton(tr("返回最优曲线"), tab1Widget);
-    
-    
+    m_sumTwoCurvesButton = new QPushButton(tr("双曲线加和"), tab1Widget);
+
+
 
     m_buttonLayout->addStretch();
     // m_buttonLayout->addWidget(m_processButton);
@@ -799,6 +806,7 @@ void TgSmallDataProcessDialog::setupUI()
     m_buttonLayout->addWidget(m_unselectAllButton);
     m_buttonLayout->addWidget(m_clearCurvesButton);
     m_buttonLayout->addWidget(m_pickBestCurveButton);
+    m_buttonLayout->addWidget(m_sumTwoCurvesButton);
 
     // m_mainLayout->addLayout(m_buttonLayout);
 
@@ -1005,7 +1013,8 @@ void TgSmallDataProcessDialog::setupConnections()
     connect(m_drawAllButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onDrawAllSelectedCurvesClicked);
     connect(m_unselectAllButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onUnselectAllSamplesClicked);
     connect(m_pickBestCurveButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onPickBestCurveClicked);
-    
+    connect(m_sumTwoCurvesButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onSumTwoCurvesClicked);
+
     // 选中样本列表勾选变化驱动左侧导航勾选状态
     connect(m_selectedSamplesList, &QListWidget::itemChanged, this, &TgSmallDataProcessDialog::onSelectedSamplesListItemChanged);
     // 点击样本文字时，也等效于切换“显示/隐藏曲线”的复选框状态（避免只能点小勾选框）
@@ -1075,6 +1084,7 @@ void TgSmallDataProcessDialog::setupConnections()
 
 void TgSmallDataProcessDialog::onDrawAllSelectedCurvesClicked()
 {
+    m_sumCompareMode = false;
     // 从全局选择管理器获取“小热重”类型已选样本，全部设为可见并绘制
     QSet<int> ids = SampleSelectionManager::instance()->selectedIdsByType(m_dataTypeName);
     m_visibleSamples = ids;
@@ -1250,6 +1260,114 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
     } else {
         QMessageBox::warning(this, tr("错误"), tr("无法确定最优曲线。"));
     }
+}
+
+void TgSmallDataProcessDialog::onSumTwoCurvesClicked()
+{
+    if (m_visibleSamples.size() < 2) {
+        QMessageBox::warning(this, tr("提示"), tr("当前可见曲线少于 2 条，请在左侧列表中勾选至少两条样本。"));
+        return;
+    }
+    QList<int> vis = m_visibleSamples.values();
+    std::sort(vis.begin(), vis.end());
+    QList<QPair<int, QString>> items;
+    for (int id : vis) {
+        items.append(qMakePair(id, buildSampleDisplayName(id)));
+    }
+    int id1 = 0;
+    int id2 = 0;
+    if (!TwoCurvePickDialog::pickTwo(this, items, id1, id2)) {
+        return;
+    }
+    plotTwoCurvesAndSum(id1, id2);
+}
+
+void TgSmallDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
+{
+    const QString& dataType = m_dataTypeName;
+    m_sumCompareMode = true;
+
+    if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    m_stageDataCache.clear();
+
+    for (int sid : m_selectedSamples.keys()) {
+        if (sid == id1 || sid == id2)
+            continue;
+        SampleSelectionManager::instance()->setSelectedWithType(sid, dataType, false, QStringLiteral("Dialog-TwoCurveSum"));
+        emit sampleSelected(sid, false);
+        m_selectedSamples.remove(sid);
+        m_curveCache.remove(sid);
+        m_legendNameCache.remove(sid);
+    }
+
+    m_visibleSamples = QSet<int>{id1, id2};
+    m_selectedSamples[id1] = buildSampleDisplayName(id1);
+    m_selectedSamples[id2] = buildSampleDisplayName(id2);
+
+    QString err;
+    QVector<QPointF> p1 = m_navigatorDao.getSampleCurveData(id1, dataType, err);
+    QVector<QPointF> p2 = m_navigatorDao.getSampleCurveData(id2, dataType, err);
+    if (p1.isEmpty() || p2.isEmpty()) {
+        QMessageBox::warning(this, tr("提示"), tr("无法读取所选样本的曲线数据。"));
+        m_sumCompareMode = false;
+        updateSelectedSamplesList();
+        return;
+    }
+    QVector<QPointF> pSum = CurveMathUtils::sumCurvesYByUnionX(p1, p2);
+    if (pSum.isEmpty()) {
+        QMessageBox::warning(this, tr("提示"), tr("加和结果为空。"));
+        m_sumCompareMode = false;
+        updateSelectedSamplesList();
+        return;
+    }
+
+    const QString n1 = buildSampleDisplayName(id1);
+    const QString n2 = buildSampleDisplayName(id2);
+    QVector<double> x1, y1, x2, y2, xs, ys;
+    for (const QPointF& p : p1) {
+        x1.append(p.x());
+        y1.append(p.y());
+    }
+    for (const QPointF& p : p2) {
+        x2.append(p.x());
+        y2.append(p.y());
+    }
+    for (const QPointF& p : pSum) {
+        xs.append(p.x());
+        ys.append(p.y());
+    }
+
+    m_chartView1->setPlotTitle(tr("双曲线加和"));
+    m_chartView1->setLabels(tr(""), tr(""));
+    m_chartView1->addGraph(x1, y1, n1, ColorUtils::setCurveColor(0), id1);
+    m_chartView1->addGraph(x2, y2, n2, ColorUtils::setCurveColor(1), id2);
+    m_chartView1->addGraph(xs, ys, tr("加和"), ColorUtils::setCurveColor(2), -1);
+    m_chartView1->setLegendVisible(false);
+    m_chartView1->replot();
+
+    if (m_legendPanel && m_legendLayout) {
+        QLayoutItem* item = nullptr;
+        while ((item = m_legendLayout->takeAt(0)) != nullptr) {
+            delete item->widget();
+            delete item;
+        }
+        const QString labels[3] = {n1, n2, tr("加和")};
+        for (int i = 0; i < 3; ++i) {
+            auto* label = new QLabel(labels[i]);
+            QPalette pal = label->palette();
+            pal.setColor(QPalette::WindowText, ColorUtils::setCurveColor(i));
+            label->setPalette(pal);
+            m_legendLayout->addWidget(label);
+        }
+        m_legendLayout->addStretch();
+    }
+
+    updateSelectedSamplesList();
+    updateSelectedStatsInfo();
 }
 
 void TgSmallDataProcessDialog::onClearCurvesClicked()
@@ -2229,6 +2347,7 @@ void TgSmallDataProcessDialog::onParametersApplied(const ProcessingParameters &n
 
 void TgSmallDataProcessDialog::recalculateAndUpdatePlot()
 {
+    m_sumCompareMode = false;
     // --- 1. UI 反馈 ---
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_parameterButton->setEnabled(false);

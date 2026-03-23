@@ -111,6 +111,9 @@ private slots:
     void onPickBestCurveClicked();         // 返回最优曲线
     // void onClearCurvesClicked(); // 清除曲线按钮槽函数
 
+    // 从当前可见曲线中选两条，同图显示两曲线及纵坐标加和
+    void onSumTwoCurvesClicked();
+
     // 显示/隐藏左侧标签页（导航 + 选中样本）
     void onToggleNavigatorClicked();
 
@@ -135,6 +138,8 @@ private:
     
     // 绘制所有选中的样本曲线
     void drawSelectedSampleCurves();
+    // 仅保留两样本、清空多阶段缓存后在 chart1 上绘制两曲线+加和
+    void plotTwoCurvesAndSum(int id1, int id2);
     
     // 参数重置
     void resetParameters();
@@ -206,7 +211,8 @@ private:
     QPushButton* m_drawAllButton; // 绘制所有选中曲线按钮
     QPushButton* m_unselectAllButton; // 取消所有选中样本按钮
     QPushButton* m_pickBestCurveButton; // 返回最优曲线按钮
-    
+    QPushButton* m_sumTwoCurvesButton;    // 双曲线加和显示
+
     // 数据访问
     SampleDAO m_sampleDao;
     NavigatorDAO m_navigatorDao;
@@ -218,6 +224,8 @@ private:
     QSet<int> m_visibleSamples;
     // 批次选择绘图去抖标记，避免重复绘制
     bool m_drawScheduled = false;
+    // 当前是否处于「两曲线+加和」专用视图（任意常规重绘将退出）
+    bool m_sumCompareMode = false;
 
     // 曲线数据与图例名称缓存，降低重复数据库访问与字符串拼接
     QHash<int, QVector<QPointF>> m_curveCache;   // <样本ID, 曲线点缓存>

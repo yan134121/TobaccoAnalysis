@@ -1,4 +1,4 @@
-﻿# CMake 最低版本要求
+# CMake 最低版本要求
 cmake_minimum_required(VERSION 3.16)
 
 # --- 设置默认构建类型 ---
@@ -114,6 +114,10 @@ set(DIALOG_FILES
     "${PROJECT_SOURCE_DIR}/gui/dialogs/SampleListDialog.cpp"
     "${PROJECT_SOURCE_DIR}/gui/dialogs/SampleListDialog.h"
     "${PROJECT_SOURCE_DIR}/gui/dialogs/samplelistdialog.ui"
+)
+list(APPEND DIALOG_FILES
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/TwoCurvePickDialog.cpp"
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/TwoCurvePickDialog.h"
 )
 
 

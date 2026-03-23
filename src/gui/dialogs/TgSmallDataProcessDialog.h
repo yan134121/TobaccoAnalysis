@@ -120,6 +120,7 @@ private slots:
     void onDrawAllSelectedCurvesClicked(); // 绘制所有选中曲线
     void onUnselectAllSamplesClicked();    // 取消所有选中样本
     void onPickBestCurveClicked();         // 返回最优曲线
+    void onSumTwoCurvesClicked();
 
     // 显示/隐藏左侧标签页（导航 + 选中样本）
     void onToggleNavigatorClicked();
@@ -155,6 +156,7 @@ private:
     
     // 绘制所有选中的样本曲线
     void drawSelectedSampleCurves();
+    void plotTwoCurvesAndSum(int id1, int id2);
     
     // 参数重置
     void resetParameters();
@@ -225,7 +227,8 @@ private:
     QPushButton* m_drawAllButton; // 绘制所有选中曲线按钮
     QPushButton* m_unselectAllButton; // 取消所有选中样本按钮
     QPushButton* m_pickBestCurveButton; // 返回最优曲线按钮
-    
+    QPushButton* m_sumTwoCurvesButton;  // 双曲线加和
+
     // 数据访问
     SampleDAO m_sampleDao;
     NavigatorDAO m_navigatorDao;
@@ -237,6 +240,7 @@ private:
     QSet<int> m_visibleSamples;
     // 批次选择绘图去抖标记
     bool m_drawScheduled = false;
+    bool m_sumCompareMode = false;
 
     // 曲线数据与图例名称缓存，降低重复数据库访问与字符串拼接
     QHash<int, QVector<QPointF>> m_curveCache;   // <样本ID, 曲线点缓存>

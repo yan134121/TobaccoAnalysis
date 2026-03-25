@@ -103,7 +103,6 @@ private slots:
     // 负责接收后台计算结果的槽函数
     void onCalculationFinished();
 
-     void onProcessAndPlotButtonClicked();
     void onStartComparison();
     void onClearCurvesClicked(); // 清除曲线按钮槽函数
     void onDrawAllSelectedCurvesClicked(); // 绘制所有选中曲线
@@ -136,8 +135,13 @@ private:
     // 在左侧导航树中查找样本节点（通过样本ID），若不存在返回nullptr
     QTreeWidgetItem* findSampleItemById(int sampleId) const;
     
-    // 绘制所有选中的样本曲线
+    // 绘制所有选中的样本曲线（原始数据预览；导航与列表勾选后走处理管线）
     void drawSelectedSampleCurves();
+
+    void applyCurrentParametersAndRecalculate();
+    void clearChartsWhenNoVisibleSamples();
+    void refreshPlotsAfterSampleVisibilityChange();
+    void scheduleRefreshPlotsFromNavigator(const QString& origin);
     // 仅保留两样本、清空多阶段缓存后在 chart1 上绘制两曲线+加和
     void plotTwoCurvesAndSum(int id1, int id2);
     
@@ -203,7 +207,6 @@ private:
     // QPushButton* m_resetButton;
     // QPushButton* m_cancelButton;
     QPushButton* m_parameterButton;
-    QPushButton* m_processAndPlotButton;
     QPushButton* m_startComparisonButton;
     // 显示/隐藏导航按钮
     QPushButton* m_toggleNavigatorButton;
@@ -224,6 +227,7 @@ private:
     QSet<int> m_visibleSamples;
     // 批次选择绘图去抖标记，避免重复绘制
     bool m_drawScheduled = false;
+    bool m_recalcScheduled = false;
     // 当前是否处于「两曲线+加和」专用视图（任意常规重绘将退出）
     bool m_sumCompareMode = false;
 

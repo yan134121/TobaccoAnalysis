@@ -1646,64 +1646,79 @@ QTreeWidgetItem* DataNavigator::findSampleItemUnderDataType(QTreeWidgetItem* dat
     return nullptr;
 }
 
+QTreeWidgetItem* DataNavigator::typeRootForDataType(const QString& dataType) const
+{
+    if (dataType == QStringLiteral("大热重")) return m_bigTgRoot;
+    if (dataType == QStringLiteral("小热重")) return m_smallTgRoot;
+    if (dataType == QStringLiteral("小热重（原始数据）")) return m_smallTgRawRoot;
+    if (dataType == QStringLiteral("色谱")) return m_chromRoot;
+    if (dataType == QStringLiteral("工序大热重")) return m_processDataRoot;
+    return nullptr;
+}
+
+bool DataNavigator::trySetSampleCheckStateRecursive(QTreeWidgetItem* item, int sampleId, bool checked)
+{
+    if (!item) return false;
+    QVariant v = item->data(0, Qt::UserRole);
+    if (v.canConvert<NavigatorNodeInfo>()) {
+        NavigatorNodeInfo info = v.value<NavigatorNodeInfo>();
+        if (info.type == NavigatorNodeInfo::Sample && info.id == sampleId) {
+            disconnect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+            item->setCheckState(0, checked ? Qt::Checked : Qt::Unchecked);
+            connect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+            DEBUG_LOG << "Sample checkbox state set: ID=" << sampleId << "Checked=" << checked;
+            return true;
+        }
+    }
+    for (int i = 0; i < item->childCount(); ++i) {
+        if (trySetSampleCheckStateRecursive(item->child(i), sampleId, checked))
+            return true;
+    }
+    return false;
+}
+
+bool DataNavigator::trySetSampleCheckStateForTypeRecursive(QTreeWidgetItem* item, int sampleId,
+                                                         const QString& dataType, bool checked)
+{
+    if (!item) return false;
+    QVariant v = item->data(0, Qt::UserRole);
+    if (v.canConvert<NavigatorNodeInfo>()) {
+        NavigatorNodeInfo info = v.value<NavigatorNodeInfo>();
+        if (info.type == NavigatorNodeInfo::Sample && info.id == sampleId && info.dataType == dataType) {
+            disconnect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+            item->setCheckState(0, checked ? Qt::Checked : Qt::Unchecked);
+            connect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
+            DEBUG_LOG << "Sample checkbox state set for type: ID=" << sampleId
+                      << "dataType=" << dataType << "Checked=" << checked;
+            return true;
+        }
+    }
+    for (int i = 0; i < item->childCount(); ++i) {
+        if (trySetSampleCheckStateForTypeRecursive(item->child(i), sampleId, dataType, checked))
+            return true;
+    }
+    return false;
+}
+
 // 设置特定样本的选择框状态
 void DataNavigator::setSampleCheckState(int sampleId, bool checked)
 {
     // 设置程序化更新守卫，防止 onItemChanged 在回写期间触发重复链路
     m_inProgrammaticUpdate = true;
 
-    // 遍历所有数据类型节点
-    for (int i = 0; i < m_dataSourceRoot->childCount(); ++i) {
-        DEBUG_LOG<<"遍历数据类型节点";
-        QTreeWidgetItem* projectItem = m_dataSourceRoot->child(i);
-        for (int j = 0; j < projectItem->childCount(); ++j) {
-            DEBUG_LOG<<"遍历项目节点";
-            QTreeWidgetItem* batchItem = projectItem->child(j);
-            for (int k = 0; k < batchItem->childCount(); ++k) {
-                DEBUG_LOG<<"遍历批次节点";
-                QTreeWidgetItem* shortCodeItem = batchItem->child(k);
-                for (int l = 0; l < shortCodeItem->childCount(); ++l) {
-                    DEBUG_LOG<<"遍历短码节点";
-                    QTreeWidgetItem* dataTypeItem = shortCodeItem->child(l);
-                    for (int m = 0; m < dataTypeItem->childCount(); ++m) {
-                        DEBUG_LOG<<"遍历数据类型节点";
-                        QTreeWidgetItem* sampleItem = dataTypeItem->child(m);
-                        
-                        // 获取节点信息
-                        QVariant data = sampleItem->data(0, Qt::UserRole);
-                        if (data.canConvert<NavigatorNodeInfo>()) {
-                            DEBUG_LOG<<"获取节点信息";
-                            NavigatorNodeInfo info = data.value<NavigatorNodeInfo>();
-                            
-                            // 检查是否是目标样本
-                            if (info.type == NavigatorNodeInfo::Sample && info.id == sampleId) {
-                                // 临时断开信号连接，避免触发onItemChanged
-                                disconnect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
-                                DEBUG_LOG << "断开itemChanged信号连接，循环次数 " << cycle_num++;
-                                DEBUG_LOG << "Temporarily disconnecting itemChanged signal";
-                                
-                                // 设置选择框状态
-                                sampleItem->setCheckState(0, checked ? Qt::Checked : Qt::Unchecked);
-                                
-                                // 重新连接信号
-                                connect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
-                                
-                                DEBUG_LOG << "Sample checkbox state set:" 
-                                         << "ID=" << sampleId 
-                                         << "Checked=" << checked;
-                                // 程序化更新结束，恢复守卫
-                                m_inProgrammaticUpdate = false;
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
+    // 实际数据源挂在「大热重」「小热重」等顶级根节点下，而非未入树的 m_dataSourceRoot
+    const QList<QTreeWidgetItem*> roots = {
+        m_bigTgRoot, m_smallTgRoot, m_smallTgRawRoot, m_chromRoot, m_processDataRoot
+    };
+    for (QTreeWidgetItem* root : roots) {
+        if (!root) continue;
+        if (trySetSampleCheckStateRecursive(root, sampleId, checked)) {
+            m_inProgrammaticUpdate = false;
+            return;
         }
     }
-    
+
     DEBUG_LOG << "Sample not found for checkbox state setting:" << sampleId;
-    // 不展开树结构。保持现有展开/折叠状态，等待用户展开时由 loadParallelSamples 同步勾选。
     m_inProgrammaticUpdate = false;
 }
 
@@ -1712,40 +1727,14 @@ void DataNavigator::setSampleCheckStateForType(int sampleId, const QString& data
 {
     m_inProgrammaticUpdate = true;
 
-    // 优先尝试直接找到并设置
-    for (int i = 0; i < m_dataSourceRoot->childCount(); ++i) {
-        QTreeWidgetItem* projectItem = m_dataSourceRoot->child(i);
-        for (int j = 0; j < projectItem->childCount(); ++j) {
-            QTreeWidgetItem* batchItem = projectItem->child(j);
-            for (int k = 0; k < batchItem->childCount(); ++k) {
-                QTreeWidgetItem* shortCodeItem = batchItem->child(k);
-                for (int l = 0; l < shortCodeItem->childCount(); ++l) {
-                    QTreeWidgetItem* dataTypeItem = shortCodeItem->child(l);
-                    QVariant dtVar = dataTypeItem->data(0, Qt::UserRole);
-                    if (dtVar.canConvert<NavigatorNodeInfo>()) {
-                        NavigatorNodeInfo dtInfo = dtVar.value<NavigatorNodeInfo>();
-                        if (dtInfo.type == NavigatorNodeInfo::DataType && dtInfo.dataType == dataType) {
-                            for (int m = 0; m < dataTypeItem->childCount(); ++m) {
-                                QTreeWidgetItem* sampleItem = dataTypeItem->child(m);
-                                QVariant data = sampleItem->data(0, Qt::UserRole);
-                                if (data.canConvert<NavigatorNodeInfo>()) {
-                                    NavigatorNodeInfo info = data.value<NavigatorNodeInfo>();
-                                    if (info.type == NavigatorNodeInfo::Sample && info.id == sampleId) {
-                                        disconnect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
-                                        sampleItem->setCheckState(0, checked ? Qt::Checked : Qt::Unchecked);
-                                        connect(this, &QTreeWidget::itemChanged, this, &DataNavigator::onItemChanged);
-                                        m_inProgrammaticUpdate = false;
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    QTreeWidgetItem* typeRoot = typeRootForDataType(dataType);
+    if (!typeRoot) {
+        m_inProgrammaticUpdate = false;
+        return;
     }
-
-    // 未找到则直接结束，不更改树的展开状态。
+    if (!trySetSampleCheckStateForTypeRecursive(typeRoot, sampleId, dataType, checked)) {
+        DEBUG_LOG << "setSampleCheckStateForType: sample not found under type root, id="
+                  << sampleId << "dataType=" << dataType;
+    }
     m_inProgrammaticUpdate = false;
 }

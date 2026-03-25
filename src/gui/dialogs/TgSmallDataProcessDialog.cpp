@@ -114,7 +114,7 @@ TgSmallDataProcessDialog::TgSmallDataProcessDialog(QWidget *parent,
                 m_selectedSamples.insert(sampleId, name);
             }
             m_suppressItemChanged = false;
-            drawSelectedSampleCurves();
+            refreshPlotsAfterSampleVisibilityChange();
         }
     }
 
@@ -776,7 +776,6 @@ void TgSmallDataProcessDialog::setupUI()
     // m_resetButton = new QPushButton(tr("重置参数"), tab1Widget);
     // m_cancelButton = new QPushButton(tr("取消"), tab1Widget);
     m_parameterButton = new QPushButton("参数设置", tab1Widget);
-    m_processAndPlotButton = new QPushButton("处理并绘图", tab1Widget);
     // 【新】增加一个按钮
     m_startComparisonButton = new QPushButton(tr("计算差异度"));
     // 新增显示/隐藏左侧标签页按钮（导航 + 选中样本）
@@ -800,7 +799,6 @@ void TgSmallDataProcessDialog::setupUI()
     // m_buttonLayout->addWidget(m_cancelButton);
     m_buttonLayout->addWidget(m_toggleNavigatorButton);
     m_buttonLayout->addWidget(m_parameterButton);
-    m_buttonLayout->addWidget(m_processAndPlotButton);
     m_buttonLayout->addWidget(m_startComparisonButton);
     m_buttonLayout->addWidget(m_drawAllButton);
     m_buttonLayout->addWidget(m_unselectAllButton);
@@ -1001,10 +999,9 @@ void TgSmallDataProcessDialog::setupConnections()
     // 按钮连接
     connect(m_parameterButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onParameterSettingsClicked);
 
-    // DEBUG_LOG << m_parameterButton << m_processAndPlotButton;
+    // DEBUG_LOG << m_parameterButton;
 
     // DEBUG_LOG << "TgSmallDataProcessDialog::setupConnections - Connecting processAndPlotButton";
-    connect(m_processAndPlotButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onProcessAndPlotButtonClicked); // 
     // DEBUG_LOG << "TgSmallDataProcessDialog::setupConnections - processAndPlotButton connected";
     connect(m_startComparisonButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onStartComparison);
     // connect(m_toggleNavigatorButton, &QPushButton::clicked, this, &TgSmallDataProcessDialog::onToggleNavigatorClicked);
@@ -1060,11 +1057,7 @@ void TgSmallDataProcessDialog::setupConnections()
                         addSampleCurve(sampleId, name);
                     }
                     updateSelectedSamplesList();
-                    if (origin == QStringLiteral("BatchSelect")) {
-                        if (!m_drawScheduled) { m_drawScheduled = true; QTimer::singleShot(0, this, [this]{ m_drawScheduled = false; drawSelectedSampleCurves(); }); }
-                    } else {
-                        drawSelectedSampleCurves();
-                    }
+                    scheduleRefreshPlotsFromNavigator(origin);
                 } else {
                     // 从“被选中样本”集合移除；同时移除可见集合与曲线
                     m_selectedSamples.remove(sampleId);
@@ -1073,11 +1066,7 @@ void TgSmallDataProcessDialog::setupConnections()
                         removeSampleCurve(sampleId);
                     }
                     updateSelectedSamplesList();
-                    if (origin == QStringLiteral("BatchSelect") || origin == QStringLiteral("Dialog-UnselectAll")) {
-                        if (!m_drawScheduled) { m_drawScheduled = true; QTimer::singleShot(0, this, [this]{ m_drawScheduled = false; drawSelectedSampleCurves(); }); }
-                    } else {
-                        drawSelectedSampleCurves();
-                    }
+                    scheduleRefreshPlotsFromNavigator(origin);
                 }
             });
 }
@@ -1095,7 +1084,7 @@ void TgSmallDataProcessDialog::onDrawAllSelectedCurvesClicked()
             m_selectedSamples.insert(sampleId, fullName);
         }
     }
-    drawSelectedSampleCurves();
+    refreshPlotsAfterSampleVisibilityChange();
     updateSelectedSamplesList();
 }
 
@@ -1107,17 +1096,23 @@ void TgSmallDataProcessDialog::onUnselectAllSamplesClicked()
     for (int sampleId : ids) {
         SampleSelectionManager::instance()->setSelectedWithType(sampleId, type, false, QStringLiteral("Dialog-UnselectAll"));
     }
+    if (m_mainNavigator) {
+        for (int sampleId : ids) {
+            m_mainNavigator->setSampleCheckStateForType(sampleId, type, false);
+        }
+    }
 
     m_selectedSamples.clear();
     m_visibleSamples.clear();
     updateSelectedSamplesList();
+    clearChartsWhenNoVisibleSamples();
 }
 
 void TgSmallDataProcessDialog::onPickBestCurveClicked()
 {
     // 获取当前已处理并缓存的样本数据
     if (m_stageDataCache.isEmpty()) {
-        QMessageBox::warning(this, tr("提示"), tr("请先点击“处理并绘图”按钮处理数据。"));
+        QMessageBox::warning(this, tr("提示"), tr("请先勾选样本并等待数据处理完成。"));
         return;
     }
 
@@ -1191,7 +1186,7 @@ void TgSmallDataProcessDialog::onPickBestCurveClicked()
                 default: stageNameStr = QString::number((int)effectiveStage); break;
             }
             
-            msg += tr("\n\n当前可见样本数：%1\n实际获取到的曲线数：%2\n尝试获取的阶段：%3\n\n可能原因：\n1. 新勾选的样本尚未进行处理；\n2. 数据处理未生成目标阶段曲线。\n\n建议：请重新点击“处理并绘图”按钮。")
+            msg += tr("\n\n当前可见样本数：%1\n实际获取到的曲线数：%2\n尝试获取的阶段：%3\n\n可能原因：\n1. 新勾选的样本尚未完成处理；\n2. 数据处理未生成目标阶段曲线。\n\n建议：请等待处理完成或检查参数设置。")
                     .arg(m_visibleSamples.size())
                     .arg(candidateCurves.size())
                     .arg(stageNameStr);
@@ -1441,10 +1436,52 @@ void TgSmallDataProcessDialog::scheduleRedraw()
         m_drawScheduled = true;
         QTimer::singleShot(0, this, [this]{
             m_drawScheduled = false;
-            drawSelectedSampleCurves();
-            updateLegendPanel();
+            refreshPlotsAfterSampleVisibilityChange();
             updateSelectedStatsInfo();
         });
+    }
+}
+
+void TgSmallDataProcessDialog::applyCurrentParametersAndRecalculate()
+{
+    m_currentParams = activeDialogParameters();
+    onParametersApplied(m_currentParams);
+}
+
+void TgSmallDataProcessDialog::clearChartsWhenNoVisibleSamples()
+{
+    m_stageDataCache.clear();
+    if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    if (m_startComparisonButton) m_startComparisonButton->setEnabled(false);
+    updateLegendPanel();
+}
+
+void TgSmallDataProcessDialog::refreshPlotsAfterSampleVisibilityChange()
+{
+    if (m_visibleSamples.isEmpty()) {
+        clearChartsWhenNoVisibleSamples();
+        return;
+    }
+    applyCurrentParametersAndRecalculate();
+}
+
+void TgSmallDataProcessDialog::scheduleRefreshPlotsFromNavigator(const QString& origin)
+{
+    const bool defer = (origin == QStringLiteral("BatchSelect") || origin == QStringLiteral("Dialog-UnselectAll"));
+    if (defer) {
+        if (!m_recalcScheduled) {
+            m_recalcScheduled = true;
+            QTimer::singleShot(0, this, [this]{
+                m_recalcScheduled = false;
+                refreshPlotsAfterSampleVisibilityChange();
+            });
+        }
+    } else {
+        refreshPlotsAfterSampleVisibilityChange();
     }
 }
 
@@ -1938,8 +1975,7 @@ void TgSmallDataProcessDialog::onSelectAllSamplesInBatch(const QString& projectN
 
     DEBUG_LOG << "批量添加完成，总样本数:" << totalSamples << " 新增数:" << addedCount;
     // 更新图表显示（如果有）
-    updatePlot();
-    updateLegendPanel();
+    refreshPlotsAfterSampleVisibilityChange();
 
     // 显示提示
     if (addedCount > 0) {
@@ -2149,8 +2185,8 @@ void TgSmallDataProcessDialog::loadSampleCurve(int sampleId)
     try {
         DEBUG_LOG << "TgSmallDataProcessDialog::loadSampleCurve - Loading curve for sampleId:" << sampleId;
         
-        // 不再单独加载一个样本的曲线，而是绘制所有选中的样本曲线
-        drawSelectedSampleCurves();
+        // 不再单独加载一个样本的曲线，而是按当前参数处理并绘制所有可见样本
+        refreshPlotsAfterSampleVisibilityChange();
         return;
         
     } catch (const std::exception& e) {
@@ -2216,16 +2252,6 @@ void TgSmallDataProcessDialog::onCancelButtonClicked()
     close();
 }
 
-
-void TgSmallDataProcessDialog::onProcessAndPlotButtonClicked()
- {
-    DEBUG_LOG << "TgSmallDataProcessDialog::onProcessAndPlotButtonClicked - Processing and plotting samples...";
-    m_currentParams = activeDialogParameters();
-
-    DEBUG_LOG << "TgSmallDataProcessDialog::onProcessAndPlotButtonClicked - Current parameters:" << m_currentParams.toString();
-    onParametersApplied( m_currentParams );
-    DEBUG_LOG << "TgSmallDataProcessDialog::onProcessAndPlotButtonClicked - Parameters applied";
- }
 
 void TgSmallDataProcessDialog::onParameterSettingsClicked()
 {
@@ -2414,9 +2440,7 @@ void TgSmallDataProcessDialog::onCalculationFinished()
 
     DEBUG_LOG << "BatchGroupData size:" << m_stageDataCache.size();
 
-    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
-        updatePlot();
-    }
+    updatePlot();
 
     // --- 2. 启用“计算差异度”按钮（至少两个样本组才能计算差异度） ---
     m_startComparisonButton->setEnabled(m_stageDataCache.size() >= 2);
@@ -2516,10 +2540,39 @@ void TgSmallDataProcessDialog::updatePlot()
 {
     try {
         DEBUG_LOG << "开始更新图表";
+        auto updateRawChart = [&]() {
+            if (!m_chartView1) return;
+            m_chartView1->clearGraphs();
+            m_chartView1->setLabels(tr(""), tr("重量"));
+            m_chartView1->setPlotTitle(m_dataTypeName == QStringLiteral("小热重（原始数据）")
+                                           ? tr("原始数据")
+                                           : tr("原始DTG数据"));
+
+            int colorIndex = 0;
+            for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+                const SampleGroup &group = groupIt.value();
+                for (const auto &sample : group.sampleDatas) {
+                    for (const auto &stage : sample.stages) {
+                        if (stage.stageName == StageName::RawData && stage.curve) {
+                            QSharedPointer<Curve> curve = stage.curve;
+                            curve->setColor(ColorUtils::setCurveColor(colorIndex++));
+                            m_chartView1->addCurve(curve);
+                        }
+                    }
+                }
+            }
+            m_chartView1->setLegendVisible(false);
+            m_chartView1->replot();
+        };
+
         if (m_dataTypeName != QStringLiteral("小热重（原始数据）")) {
-            // 非小热重（原始数据）保持原有绘制逻辑
-            drawSelectedSampleCurves();
-            DEBUG_LOG << "已重新绘制所有选中样本的曲线";
+            // 非小热重（原始数据）优先使用处理结果刷新首图，旧逻辑作为兜底
+            if (!m_stageDataCache.isEmpty()) {
+                updateRawChart();
+            } else {
+                drawSelectedSampleCurves();
+            }
+            DEBUG_LOG << "已刷新小热重首图原始曲线";
             return;
         }
 
@@ -2530,12 +2583,15 @@ void TgSmallDataProcessDialog::updatePlot()
 
         if (m_stageDataCache.isEmpty()) {
             DEBUG_LOG << "阶段数据为空，清空处理图表";
+            if (m_chartView1) m_chartView1->clearGraphs();
             m_chartView2->clearGraphs();
             m_chartView3->clearGraphs();
             m_chartView4->clearGraphs();
             m_chartView5->clearGraphs();
             return;
         }
+
+        updateRawChart();
 
         auto updateStagePlot = [&](StageName stageName, ChartView* targetView, const QString& title, const QString& xLabel, const QString& yLabel) {
             if (!targetView) return;

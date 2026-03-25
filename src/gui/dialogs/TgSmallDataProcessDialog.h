@@ -108,7 +108,6 @@ private slots:
     // 负责接收后台计算结果的槽函数
     void onCalculationFinished();
 
-    void onProcessAndPlotButtonClicked();
     void onStartComparison();
     void onClearCurvesClicked(); // 清除曲线按钮槽函数
     
@@ -154,8 +153,13 @@ private:
     // 在左侧导航树中查找样本节点（通过样本ID），若不存在返回nullptr
     QTreeWidgetItem* findSampleItemById(int sampleId) const;
     
-    // 绘制所有选中的样本曲线
+    // 绘制所有选中的样本曲线（原始数据预览；导航与列表勾选后走处理管线）
     void drawSelectedSampleCurves();
+
+    void applyCurrentParametersAndRecalculate();
+    void clearChartsWhenNoVisibleSamples();
+    void refreshPlotsAfterSampleVisibilityChange();
+    void scheduleRefreshPlotsFromNavigator(const QString& origin);
     void plotTwoCurvesAndSum(int id1, int id2);
     
     // 参数重置
@@ -220,7 +224,6 @@ private:
     // QPushButton* m_resetButton;
     // QPushButton* m_cancelButton;
     QPushButton* m_parameterButton;
-    QPushButton* m_processAndPlotButton;
     QPushButton* m_startComparisonButton;
     QPushButton* m_toggleNavigatorButton; // 添加导航树显示/隐藏按钮
     QPushButton* m_clearCurvesButton; // 清除曲线按钮
@@ -240,6 +243,7 @@ private:
     QSet<int> m_visibleSamples;
     // 批次选择绘图去抖标记
     bool m_drawScheduled = false;
+    bool m_recalcScheduled = false;
     bool m_sumCompareMode = false;
 
     // 曲线数据与图例名称缓存，降低重复数据库访问与字符串拼接

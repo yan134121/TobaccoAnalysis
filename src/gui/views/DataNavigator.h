@@ -165,6 +165,12 @@ public:
 
     bool m_inProgrammaticUpdate = false;
     QSet<QString> m_enabledSampleCheckboxTypes;
+
+    // 从当前 UI 树结构（大热重/小热重等顶级根）递归查找样本节点并设置勾选
+    QTreeWidgetItem* typeRootForDataType(const QString& dataType) const;
+    bool trySetSampleCheckStateRecursive(QTreeWidgetItem* item, int sampleId, bool checked);
+    bool trySetSampleCheckStateForTypeRecursive(QTreeWidgetItem* item, int sampleId,
+                                                const QString& dataType, bool checked);
 };
 
 #endif // DATANAVIGATOR_H

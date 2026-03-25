@@ -1053,6 +1053,11 @@ void ProcessTgBigDataProcessDialog::onUnselectAllSamplesClicked()
     for (int sampleId : ids) {
         SampleSelectionManager::instance()->setSelectedWithType(sampleId, type, false, QStringLiteral("Dialog-UnselectAll"));
     }
+    if (m_mainNavigator) {
+        for (int sampleId : ids) {
+            m_mainNavigator->setSampleCheckStateForType(sampleId, type, false);
+        }
+    }
 
     m_selectedSamples.clear();
     m_visibleSamples.clear();

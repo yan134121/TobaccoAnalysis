@@ -16,6 +16,7 @@
 #include "services/algorithm/BaselineCorrector.h"
 #include "services/algorithm/FindPeaks.h"       // 峰检测算法
 #include "services/algorithm/COWAlignment.h"    // COW峰对齐算法
+#include "services/algorithm/PeakSegCOWAlignment.h" // PeakSeg-COW峰对齐算法（MATLAB移植）
 // 工序大热重数据访问与实体
 #include "data_access/ProcessTgBigDataDAO.h"
 #include "core/entities/ProcessTgBigData.h"
@@ -67,6 +68,7 @@ void DataProcessingService::registerSteps() {
     // 注册峰检测与COW对齐（色谱算法）
     m_registeredSteps["peak_detection"] = new FindPeaks();
     m_registeredSteps["cow_alignment"] = new COWAlignment();
+    m_registeredSteps["peakseg_cow_alignment"] = new PeakSegCOWAlignment();
 }
 
 // 为当前线程确保一个独立的数据库连接，避免跨线程使用同一连接导致崩溃
@@ -791,9 +793,11 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
 
     }
 
-    // 若启用峰对齐，且指定了参考样本ID，则对组内样本执行COW对齐
-    if (params.alignmentEnabled && params.referenceSampleId > 0 && m_registeredSteps.contains("cow_alignment")) {
-        IProcessingStep* alignStep = m_registeredSteps.value("cow_alignment");
+    // 若启用峰对齐，且指定了参考样本ID，则对组内样本执行对齐（可选 COW / PeakSeg-COW）
+    const QString alignStepKey = (params.peakSegCowEnabled ? QStringLiteral("peakseg_cow_alignment")
+                                                          : QStringLiteral("cow_alignment"));
+    if (params.alignmentEnabled && params.referenceSampleId > 0 && m_registeredSteps.contains(alignStepKey)) {
+        IProcessingStep* alignStep = m_registeredSteps.value(alignStepKey);
         QString error;
         // 查找参考样本的曲线（优先使用基线校正后的曲线，没有则用原始数据）
         QSharedPointer<Curve> refCurve;
@@ -849,10 +853,22 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
 
                     // 执行对齐
                     QVariantMap alignParams;
-                    alignParams["window_size"] = params.cowWindowSize;
-                    alignParams["max_warp"] = params.cowMaxWarp;
-                    alignParams["segment_count"] = params.cowSegmentCount;
-                    alignParams["resample_step"] = params.cowResampleStep;
+                    if (alignStepKey == QStringLiteral("peakseg_cow_alignment")) {
+                        // PeakSeg-COW（MATLAB 移植）参数映射：minProminence=peakMinProminence, t=cowMaxWarp, ranges=均分 cowSegmentCount
+                        // 其余参数先采用 MATLAB 默认值（smoothSpan=5, maxClusterGap=5）
+                        int cappedRangeCount = qMax(1, qMin(params.cowSegmentCount, 10));
+                        alignParams["min_prominence"] = params.peakMinProminence;
+                        alignParams["t"] = params.cowMaxWarp;
+                        alignParams["range_count"] = cappedRangeCount;
+                        alignParams["smooth_span"] = 5;
+                        alignParams["max_cluster_gap"] = 5;
+                    } else {
+                        // 现有简化 COWAlignment 参数
+                        alignParams["window_size"] = params.cowWindowSize;
+                        alignParams["max_warp"] = params.cowMaxWarp;
+                        alignParams["segment_count"] = params.cowSegmentCount;
+                        alignParams["resample_step"] = params.cowResampleStep;
+                    }
 
                     ProcessingResult ar = alignStep->process({refCurve.data(), tgtCurve.data()}, alignParams, error);
                     if (ar.namedCurves.contains("aligned") && !ar.namedCurves["aligned"].isEmpty()) {

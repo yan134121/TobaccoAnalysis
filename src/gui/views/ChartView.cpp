@@ -654,7 +654,7 @@ void ChartView::clearClickMarker()
     m_extraTexts.clear();
 }
 
-// 选择工具模式下，鼠标悬停到某条曲线时，显示该曲线的图例名称
+// 选择工具模式下，鼠标悬停到某条曲线时，显示该点坐标（不显示曲线名称）
 void ChartView::onPlotMouseMove(QMouseEvent* event)
 {
     if (!m_plot) return;
@@ -683,21 +683,9 @@ void ChartView::onPlotMouseMove(QMouseEvent* event)
     }
 
     if (nearestGraph && bestDist < threshold) {
-        const QString graphName = nearestGraph->name();
-        if (m_lastHoverGraphName != graphName) m_lastHoverGraphName = graphName;
+        m_lastHoverGraphName.clear();
 
-        // 根据图形对象反查 sampleId，再取完整显示名称（project-batch-short-parallel）
-        int matchedSampleId = -1;
-        for (auto it = m_sampleGraphs.constBegin(); it != m_sampleGraphs.constEnd(); ++it) {
-            if (it.value() == nearestGraph) { matchedSampleId = it.key(); break; }
-        }
-        QString displayName = graphName;
-        if (matchedSampleId >= 0 && m_sampleNames.contains(matchedSampleId)) {
-            QString n = m_sampleNames.value(matchedSampleId).trimmed();
-            if (!n.isEmpty()) displayName = n;
-        }
-
-        // 创建/更新悬停标记与图例文本
+        // 创建/更新悬停标记与坐标文本
         double xCoord = m_plot->xAxis->pixelToCoord(event->pos().x());
 
         if (!m_hoverTracer) {
@@ -726,7 +714,12 @@ void ChartView::onPlotMouseMove(QMouseEvent* event)
             m_hoverLegendText->setFont(f);
         }
         m_hoverLegendText->position->setParentAnchor(m_hoverTracer->position);
-        m_hoverLegendText->setText(displayName.isEmpty() ? QStringLiteral("曲线") : displayName);
+        const QPointF tracerPixel = m_hoverTracer->position->pixelPosition();
+        const double hoverX = m_plot->xAxis->pixelToCoord(tracerPixel.x());
+        const double hoverY = m_plot->yAxis->pixelToCoord(tracerPixel.y());
+        m_hoverLegendText->setText(QString("x: %1\ny: %2")
+                                   .arg(QString::number(hoverX, 'f', 4))
+                                   .arg(QString::number(hoverY, 'f', 4)));
 
         m_plot->replot(QCustomPlot::rpQueuedReplot);
     } else {

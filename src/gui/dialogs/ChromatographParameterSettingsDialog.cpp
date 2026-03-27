@@ -224,6 +224,7 @@ QWidget* ChromatographParameterSettingsDialog::createAlignmentTab()
     QFormLayout* layout = new QFormLayout(widget);
 
     m_alignEnabledCheck = new QCheckBox(tr("启用峰对齐"), widget);
+    m_peakSegCowEnabledCheck = new QCheckBox(tr("使用 PeakSeg-COW（MATLAB 版）"), widget);
     m_referenceSampleIdSpin = new QSpinBox(widget);
     m_cowWindowSizeSpin = new QSpinBox(widget);
     m_cowMaxWarpSpin = new QSpinBox(widget);
@@ -238,6 +239,7 @@ QWidget* ChromatographParameterSettingsDialog::createAlignmentTab()
     m_cowResampleStepSpin->setDecimals(6);
 
     layout->addRow(m_alignEnabledCheck);
+    layout->addRow(m_peakSegCowEnabledCheck);
     layout->addRow(tr("参考样本ID:"), m_referenceSampleIdSpin);
     layout->addRow(tr("窗口大小:"), m_cowWindowSizeSpin);
     layout->addRow(tr("最大滞后(点):"), m_cowMaxWarpSpin);
@@ -413,6 +415,7 @@ void ChromatographParameterSettingsDialog::setParameters(const ProcessingParamet
     if (m_peakSnrSpin) m_peakSnrSpin->setValue(params.peakSnrThreshold);
 
     if (m_alignEnabledCheck) m_alignEnabledCheck->setChecked(params.alignmentEnabled);
+    if (m_peakSegCowEnabledCheck) m_peakSegCowEnabledCheck->setChecked(params.peakSegCowEnabled);
     if (m_referenceSampleIdSpin) m_referenceSampleIdSpin->setValue(params.referenceSampleId > 0 ? params.referenceSampleId : 1);
     if (m_cowWindowSizeSpin) m_cowWindowSizeSpin->setValue(params.cowWindowSize);
     if (m_cowMaxWarpSpin) m_cowMaxWarpSpin->setValue(params.cowMaxWarp);
@@ -439,6 +442,7 @@ ProcessingParameters ChromatographParameterSettingsDialog::getParameters() const
     if (m_peakMinDistanceSpin)  params.peakMinDistance = m_peakMinDistanceSpin->value();
     if (m_peakSnrSpin)          params.peakSnrThreshold = m_peakSnrSpin->value();
     if (m_alignEnabledCheck)    params.alignmentEnabled = m_alignEnabledCheck->isChecked();
+    if (m_peakSegCowEnabledCheck) params.peakSegCowEnabled = m_peakSegCowEnabledCheck->isChecked();
     if (m_referenceSampleIdSpin) params.referenceSampleId = m_referenceSampleIdSpin->value();
     if (m_cowWindowSizeSpin)    params.cowWindowSize = m_cowWindowSizeSpin->value();
     if (m_cowMaxWarpSpin)       params.cowMaxWarp = m_cowMaxWarpSpin->value();

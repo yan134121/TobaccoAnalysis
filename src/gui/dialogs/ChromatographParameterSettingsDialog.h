@@ -138,6 +138,7 @@ private:
 
     // 峰对齐
     QCheckBox* m_alignEnabledCheck = nullptr;
+    QCheckBox* m_peakSegCowEnabledCheck = nullptr;
     QSpinBox* m_referenceSampleIdSpin = nullptr;
     QSpinBox* m_cowWindowSizeSpin = nullptr;
     QSpinBox* m_cowMaxWarpSpin = nullptr;

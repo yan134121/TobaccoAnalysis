@@ -137,6 +137,7 @@ struct ProcessingParameters {
 
     // --- COW峰对齐（新增色谱算法，当前用于批量/参考对齐场景，预留参数） ---
     bool alignmentEnabled = false;         // 是否执行峰对齐（需要参考样本）
+    bool peakSegCowEnabled = false;        // 峰对齐算法选择：true=PeakSeg-COW（MATLAB移植），false=现有简化COW
     int cowWindowSize = 100;               // 相关性窗口大小（预留）
     int cowMaxWarp = 50;                   // 最大滞后搜索范围（点）
     int cowSegmentCount = 1;               // 分段数（预留）

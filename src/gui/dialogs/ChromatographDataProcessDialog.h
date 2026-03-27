@@ -104,7 +104,6 @@ private slots:
     // 负责接收后台计算结果的槽函数
     void onCalculationFinished();
 
-    void onProcessAndPlotButtonClicked();
     void onStartComparison();
     
     // 处理左侧导航器的右键菜单
@@ -212,7 +211,6 @@ private:
     // QPushButton* m_resetButton;
     // QPushButton* m_cancelButton;
     QPushButton* m_parameterButton;
-    QPushButton* m_processAndPlotButton;
     QPushButton* m_startComparisonButton;
     QPushButton* m_toggleNavigatorButton; // 添加导航树显示/隐藏按钮
     QPushButton* m_clearCurvesButton; // 清除曲线按钮
@@ -231,6 +229,9 @@ private:
 
     // 批次选择绘图去抖标记
     bool m_drawScheduled = false;
+    // 自动重算防重入：计算进行中时只标记待执行，结束后补跑一次
+    bool m_recalcInProgress = false;
+    bool m_recalcPending = false;
 
     // 曲线数据与图例名称缓存，降低重复数据库访问与字符串拼接
     QHash<int, QVector<QPointF>> m_curveCache;   // <样本ID, 曲线点缓存>

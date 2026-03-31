@@ -748,6 +748,7 @@ void TgBigDataProcessDialog::setupConnections()
     connect(SampleSelectionManager::instance(), &SampleSelectionManager::selectionChangedByType,
             this, [this](int sampleId, const QString& dataType, bool selected, const QString& origin){
                 if (dataType != QStringLiteral("大热重")) return;
+                if (m_inTwoCurveSwitching) return;
                 if (selected) {
                     // 加入“被选中样本”集合；首次出现则默认可见（勾选）并绘制曲线
                     QString name = m_selectedSamples.value(sampleId);
@@ -974,6 +975,7 @@ void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
 {
     const QString dataType = QStringLiteral("大热重");
     m_sumCompareMode = true;
+    m_inTwoCurveSwitching = true;
 
     if (m_chartView1) m_chartView1->clearGraphs();
     if (m_chartView2) m_chartView2->clearGraphs();
@@ -982,16 +984,19 @@ void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
     if (m_chartView5) m_chartView5->clearGraphs();
     m_stageDataCache.clear();
 
+    QList<int> toRemoveIds;
     for (int sid : m_selectedSamples.keys()) {
-        if (sid == id1 || sid == id2)
-            continue;
+        if (sid != id1 && sid != id2)
+            toRemoveIds.append(sid);
+    }
+    if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(true);
+    for (int sid : toRemoveIds) {
         SampleSelectionManager::instance()->setSelectedWithType(sid, dataType, false, QStringLiteral("Dialog-TwoCurveSum"));
-        emit sampleSelected(sid, false);
-        m_selectedSamples.remove(sid);
         m_curveCache.remove(sid);
         m_legendNameCache.remove(sid);
     }
 
+    m_selectedSamples.clear();
     m_visibleSamples = QSet<int>{id1, id2};
     m_selectedSamples[id1] = buildSampleDisplayName(id1);
     m_selectedSamples[id2] = buildSampleDisplayName(id2);
@@ -1002,6 +1007,8 @@ void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
     if (p1.isEmpty() || p2.isEmpty()) {
         QMessageBox::warning(this, tr("提示"), tr("无法读取所选样本的曲线数据。"));
         m_sumCompareMode = false;
+        if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
+        m_inTwoCurveSwitching = false;
         updateSelectedSamplesList();
         return;
     }
@@ -1009,6 +1016,8 @@ void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
     if (pSum.isEmpty()) {
         QMessageBox::warning(this, tr("提示"), tr("加和结果为空。"));
         m_sumCompareMode = false;
+        if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
+        m_inTwoCurveSwitching = false;
         updateSelectedSamplesList();
         return;
     }
@@ -1054,8 +1063,10 @@ void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
         m_legendLayout->addStretch();
     }
 
+    if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
     updateSelectedSamplesList();
     updateSelectedStatsInfo();
+    m_inTwoCurveSwitching = false;
 }
 
 // 显示/隐藏左侧标签页（包含样本导航与选中样本列表）

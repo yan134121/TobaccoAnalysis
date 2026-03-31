@@ -11,11 +11,13 @@
 #include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QDialogButtonBox>
 #include <QTabWidget>
 #include <QFormLayout>
 #include <QMessageBox>
+#include <QGroupBox>
 
 
 // ChromatographParameterSettingsDialog::ChromatographParameterSettingsDialog(const ProcessingParameters& initialParams, QWidget *parent)
@@ -29,6 +31,7 @@ ChromatographParameterSettingsDialog::ChromatographParameterSettingsDialog(const
     ProcessingParameters init = initialParams;
     init.baselineEnabled = true;
     init.peakDetectionEnabled = true;
+    init.peakSegUseMatlabDefaultRanges = true;
     m_currentParams = init;
 
     setupUi();
@@ -58,6 +61,7 @@ void ChromatographParameterSettingsDialog::setupUi()
     m_tabWidget->addTab(createBaselineTab(), tr("基线校正"));
     m_tabWidget->addTab(createPeakTab(), tr("峰检测"));
     m_tabWidget->addTab(createAlignmentTab(), tr("峰对齐"));
+    m_tabWidget->addTab(createChromClipAndMetricsTab(), tr("裁剪与分段差异度"));
     m_tabWidget->addTab(createDifferenceTab(), tr("差异度")); // createDifferenceTab();
 
     mainLayout->addWidget(m_tabWidget);
@@ -246,9 +250,84 @@ QWidget* ChromatographParameterSettingsDialog::createAlignmentTab()
     layout->addRow(tr("分段数:"), m_cowSegmentCountSpin);
     layout->addRow(tr("重采样步长:"), m_cowResampleStepSpin);
 
+    m_peakSegMatlabRangesCheck = new QCheckBox(tr("PeakSeg 使用 MATLAB 默认区间 (10 段 Sepu_align_batch)"), widget);
+    layout->addRow(m_peakSegMatlabRangesCheck);
+
     return widget;
 }
 
+QWidget* ChromatographParameterSettingsDialog::createChromClipAndMetricsTab()
+{
+    QWidget* widget = new QWidget;
+    auto* layout = new QFormLayout(widget);
+
+    auto* clipGroup = new QGroupBox(tr("裁剪（基线校正后）"), widget);
+    auto* clipForm = new QFormLayout(clipGroup);
+    m_chromClipEnabledCheck = new QCheckBox(tr("启用裁剪"), widget);
+    m_chromClipByIndexCheck = new QCheckBox(tr("按点索引裁剪（否则按 X 范围）"), widget);
+    m_chromClipStartSpin = new QSpinBox(widget);
+    m_chromClipStartSpin->setRange(1, 100000000);
+    m_chromClipStartSpin->setValue(1);
+    m_chromClipEndSpin = new QSpinBox(widget);
+    m_chromClipEndSpin->setRange(1, 100000000);
+    m_chromClipEndSpin->setValue(11630);
+    m_chromClipMinXSpin = new QDoubleSpinBox(widget);
+    m_chromClipMinXSpin->setRange(-1e9, 1e9);
+    m_chromClipMinXSpin->setDecimals(6);
+    m_chromClipMaxXSpin = new QDoubleSpinBox(widget);
+    m_chromClipMaxXSpin->setRange(-1e9, 1e9);
+    m_chromClipMaxXSpin->setDecimals(6);
+    clipForm->addRow(m_chromClipEnabledCheck);
+    clipForm->addRow(m_chromClipByIndexCheck);
+    clipForm->addRow(tr("起始索引(1-based):"), m_chromClipStartSpin);
+    clipForm->addRow(tr("结束索引(1-based):"), m_chromClipEndSpin);
+    clipForm->addRow(tr("X 最小值:"), m_chromClipMinXSpin);
+    clipForm->addRow(tr("X 最大值:"), m_chromClipMaxXSpin);
+    layout->addRow(clipGroup);
+
+    auto* ftGroup = new QGroupBox(tr("对齐后分段微调"), widget);
+    auto* ftForm = new QFormLayout(ftGroup);
+    m_chromFinetuneCheck = new QCheckBox(tr("启用微调（需 PeakSeg-COW 对齐）"), widget);
+    m_chromFinetuneRangeSpin = new QSpinBox(widget);
+    m_chromFinetuneRangeSpin->setRange(0, 1000);
+    m_chromFinetuneRangeSpin->setValue(5);
+    ftForm->addRow(m_chromFinetuneCheck);
+    ftForm->addRow(tr("±点数搜索半径:"), m_chromFinetuneRangeSpin);
+    layout->addRow(ftGroup);
+
+    auto* diffGroup = new QGroupBox(tr("分段面积两两差异度"), widget);
+    auto* diffForm = new QFormLayout(diffGroup);
+    m_chromPairwiseDiffCheck = new QCheckBox(tr("启用批量两两比较（需微调阶段面积）"), widget);
+    m_chromMeanSpcGainSpin = new QDoubleSpinBox(widget);
+    m_chromMeanSpcGainSpin->setRange(0.0, 1e6);
+    m_chromMeanSpcGainSpin->setValue(15.0);
+    m_chromMeanSpcGainSpin->setDecimals(3);
+    diffForm->addRow(m_chromPairwiseDiffCheck);
+    diffForm->addRow(tr("meanSPC 修正 gain（无标定数据时效果为 0）:"), m_chromMeanSpcGainSpin);
+    m_chromAreaDivideByRefCheck = new QCheckBox(tr("差异度前按参考样分段面积归一化（all_norm 思路）"), widget);
+    m_chromForceUnitSegSpin = new QSpinBox(widget);
+    m_chromForceUnitSegSpin->setRange(0, 100000);
+    m_chromForceUnitSegSpin->setSpecialValueText(tr("关闭"));
+    m_chromForceUnitSegSpin->setValue(0);
+    diffForm->addRow(m_chromAreaDivideByRefCheck);
+    diffForm->addRow(tr("指定段强制为 1（0=关闭，如 31）:"), m_chromForceUnitSegSpin);
+    m_chromCalibMapPathEdit = new QLineEdit(widget);
+    m_chromCalibMapPathEdit->setPlaceholderText(tr("标定样映射 XLSX（可选）"));
+    m_chromCalibCosPathEdit = new QLineEdit(widget);
+    m_chromCalibCosPathEdit->setPlaceholderText(tr("标定 cosine 表 XLSX（可选）"));
+    diffForm->addRow(tr("标定映射表:"), m_chromCalibMapPathEdit);
+    diffForm->addRow(tr("标定 cosine 表:"), m_chromCalibCosPathEdit);
+    layout->addRow(diffGroup);
+
+    auto* extGroup = new QGroupBox(tr("外部分段起点（微调）"), widget);
+    auto* extForm = new QFormLayout(extGroup);
+    m_chromExternalSegPathEdit = new QLineEdit(widget);
+    m_chromExternalSegPathEdit->setPlaceholderText(tr("每行一个 1-based 索引，空则使用 PeakSeg"));
+    extForm->addRow(tr("分段文件:"), m_chromExternalSegPathEdit);
+    layout->addRow(extGroup);
+
+    return widget;
+}
 
 
 // 差异度计算
@@ -421,6 +500,23 @@ void ChromatographParameterSettingsDialog::setParameters(const ProcessingParamet
     if (m_cowMaxWarpSpin) m_cowMaxWarpSpin->setValue(params.cowMaxWarp);
     if (m_cowSegmentCountSpin) m_cowSegmentCountSpin->setValue(params.cowSegmentCount);
     if (m_cowResampleStepSpin) m_cowResampleStepSpin->setValue(params.cowResampleStep);
+    if (m_peakSegMatlabRangesCheck) m_peakSegMatlabRangesCheck->setChecked(params.peakSegUseMatlabDefaultRanges);
+
+    if (m_chromClipEnabledCheck) m_chromClipEnabledCheck->setChecked(params.chromClipEnabled);
+    if (m_chromClipByIndexCheck) m_chromClipByIndexCheck->setChecked(params.chromClipByIndex);
+    if (m_chromClipStartSpin) m_chromClipStartSpin->setValue(params.chromClipStartIndex1);
+    if (m_chromClipEndSpin) m_chromClipEndSpin->setValue(params.chromClipEndIndex1);
+    if (m_chromClipMinXSpin) m_chromClipMinXSpin->setValue(params.chromClipMinX);
+    if (m_chromClipMaxXSpin) m_chromClipMaxXSpin->setValue(params.chromClipMaxX);
+    if (m_chromFinetuneCheck) m_chromFinetuneCheck->setChecked(params.chromFinetuneEnabled);
+    if (m_chromFinetuneRangeSpin) m_chromFinetuneRangeSpin->setValue(params.chromFinetuneAdjustRange);
+    if (m_chromPairwiseDiffCheck) m_chromPairwiseDiffCheck->setChecked(params.chromDifferencePairwiseEnabled);
+    if (m_chromMeanSpcGainSpin) m_chromMeanSpcGainSpin->setValue(params.chromMeanSpcCalibGain);
+    if (m_chromAreaDivideByRefCheck) m_chromAreaDivideByRefCheck->setChecked(params.chromSegmentAreaDivideByReferenceForDiff);
+    if (m_chromForceUnitSegSpin) m_chromForceUnitSegSpin->setValue(params.chromSegmentForceUnitIndex1);
+    if (m_chromCalibMapPathEdit) m_chromCalibMapPathEdit->setText(params.chromCalibSampleMapPath);
+    if (m_chromCalibCosPathEdit) m_chromCalibCosPathEdit->setText(params.chromCalibPairwiseCosinePath);
+    if (m_chromExternalSegPathEdit) m_chromExternalSegPathEdit->setText(params.chromExternalSegmentStartsFile);
 }
 
 ProcessingParameters ChromatographParameterSettingsDialog::getParameters() const
@@ -448,6 +544,24 @@ ProcessingParameters ChromatographParameterSettingsDialog::getParameters() const
     if (m_cowMaxWarpSpin)       params.cowMaxWarp = m_cowMaxWarpSpin->value();
     if (m_cowSegmentCountSpin)  params.cowSegmentCount = m_cowSegmentCountSpin->value();
     if (m_cowResampleStepSpin)  params.cowResampleStep = m_cowResampleStepSpin->value();
+    if (m_peakSegMatlabRangesCheck) params.peakSegUseMatlabDefaultRanges = m_peakSegMatlabRangesCheck->isChecked();
+
+    if (m_chromClipEnabledCheck) params.chromClipEnabled = m_chromClipEnabledCheck->isChecked();
+    if (m_chromClipByIndexCheck) params.chromClipByIndex = m_chromClipByIndexCheck->isChecked();
+    if (m_chromClipStartSpin) params.chromClipStartIndex1 = m_chromClipStartSpin->value();
+    if (m_chromClipEndSpin) params.chromClipEndIndex1 = m_chromClipEndSpin->value();
+    if (m_chromClipMinXSpin) params.chromClipMinX = m_chromClipMinXSpin->value();
+    if (m_chromClipMaxXSpin) params.chromClipMaxX = m_chromClipMaxXSpin->value();
+    if (m_chromFinetuneCheck) params.chromFinetuneEnabled = m_chromFinetuneCheck->isChecked();
+    if (m_chromFinetuneRangeSpin) params.chromFinetuneAdjustRange = m_chromFinetuneRangeSpin->value();
+    if (m_chromPairwiseDiffCheck) params.chromDifferencePairwiseEnabled = m_chromPairwiseDiffCheck->isChecked();
+    if (m_chromMeanSpcGainSpin) params.chromMeanSpcCalibGain = m_chromMeanSpcGainSpin->value();
+    if (m_chromAreaDivideByRefCheck) params.chromSegmentAreaDivideByReferenceForDiff = m_chromAreaDivideByRefCheck->isChecked();
+    if (m_chromForceUnitSegSpin) params.chromSegmentForceUnitIndex1 = m_chromForceUnitSegSpin->value();
+    if (m_chromCalibMapPathEdit) params.chromCalibSampleMapPath = m_chromCalibMapPathEdit->text().trimmed();
+    if (m_chromCalibCosPathEdit) params.chromCalibPairwiseCosinePath = m_chromCalibCosPathEdit->text().trimmed();
+    if (m_chromExternalSegPathEdit) params.chromExternalSegmentStartsFile = m_chromExternalSegPathEdit->text().trimmed();
+
     // 权重
     params.totalWeight = m_weightNRMSE->value() + m_weightPearson->value() + m_weightEuclidean->value();
     params.weightNRMSE = m_weightNRMSE->value();

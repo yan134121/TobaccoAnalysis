@@ -349,7 +349,7 @@ void TgBigDifferenceWorkbench::exportToExcel(const QList<QMap<QString, QVariant>
         QXlsx::Document xlsx;
         
         // 设置表头
-        xlsx.write(1, 1, "样品前缀");
+        xlsx.write(1, 1, "样品名称");
         xlsx.write(1, 2, "综合评分");
         xlsx.write(1, 3, "均方根RMSE(原始)");
         xlsx.write(1, 4, "NRMSE(原始)");
@@ -398,7 +398,7 @@ void TgBigDifferenceWorkbench::exportToExcel(const QList<QMap<QString, QVariant>
         out.setGenerateByteOrderMark(true);
         
         // 写入表头
-        out << "样品前缀\t综合评分\t均方根RMSE(原始)\tNRMSE(原始)\tNRMSE(归一化)\t皮尔逊相关系数(原始)\t皮尔逊相关系数(归一化)\t欧氏距离(原始)\t欧氏距离(归一化)\t排名\t是否全优\n";
+        out << "样品名称\t综合评分\t均方根RMSE(原始)\tNRMSE(原始)\tNRMSE(归一化)\t皮尔逊相关系数(原始)\t皮尔逊相关系数(归一化)\t欧氏距离(原始)\t欧氏距离(归一化)\t排名\t是否全优\n";
         
         // 写入数据行，使用制表符分隔
         for (const auto& row : data) {
@@ -442,7 +442,7 @@ void TgBigDifferenceWorkbench::onShowBestSampleRankingTable()
     QTableWidget* tableWidget = new QTableWidget(&dialog);
     tableWidget->setColumnCount(11);
     QStringList headers;
-    headers << "样品前缀" << "综合评分"
+    headers << "样品名称" << "综合评分"
             << "均方根RMSE(原始)" << "NRMSE(原始)" << "NRMSE(归一化)"
             << "皮尔逊相关系数(原始)" << "皮尔逊相关系数(归一化)"
             << "欧氏距离(原始)" << "欧氏距离(归一化)"
@@ -537,18 +537,13 @@ void TgBigDifferenceWorkbench::onShowBestSampleRankingTable()
     double pearsonMin = 999.0, pearsonMax = -999.0;
 
     SampleComparisonService* comparer = m_appInitializer->getSampleComparisonService();
-    SingleTobaccoSampleDAO sampleDao;
 
     for (int i = 0; i < allCurves.size(); ++i) {
         QSharedPointer<Curve> curve = allCurves[i];
         if (curve.isNull()) continue;
 
         int sampleId = curve->sampleId();
-        SampleIdentifier sid = sampleDao.getSampleIdentifierById(sampleId);
-        QString samplePrefix = QString("%1-%2-%3")
-                                    .arg(sid.projectName)
-                                    .arg(sid.batchCode)
-                                    .arg(sid.shortCode);
+        QString samplePrefix = curve->name();
 
         double rmsePlain = comparer->calculatePlainRMSE(referenceCurve, curve);
         double rmseRaw = comparer->calculateNRMSE(referenceCurve, curve);
@@ -591,14 +586,14 @@ void TgBigDifferenceWorkbench::onShowBestSampleRankingTable()
         QMap<QString, QVariant> rowData;
         rowData["sample_id"] = res.sampleId;
         rowData["sample_prefix"] = res.samplePrefix;
-        rowData["comprehensive_score"] = QString::number(comprehensiveScore, 'f', 16);
-        rowData["rmse_plain"] = QString::number(res.rmsePlain, 'f', 16);
-        rowData["rmse_raw"] = QString::number(res.rmseRaw, 'f', 16);
-        rowData["rmse_normalized"] = QString::number(rmseNormalized, 'f', 16);
-        rowData["pearson_raw"] = QString::number(res.pearsonRaw, 'f', 16);
-        rowData["pearson_normalized"] = QString::number(pearsonNormalized, 'f', 16);
-        rowData["euclidean_raw"] = QString::number(res.euclideanRaw, 'f', 16);
-        rowData["euclidean_normalized"] = QString::number(euclideanNormalized, 'f', 16);
+        rowData["comprehensive_score"] = QString::number(comprehensiveScore, 'f', 4);
+        rowData["rmse_plain"] = QString::number(res.rmsePlain, 'f', 4);
+        rowData["rmse_raw"] = QString::number(res.rmseRaw, 'f', 4);
+        rowData["rmse_normalized"] = QString::number(rmseNormalized, 'f', 4);
+        rowData["pearson_raw"] = QString::number(res.pearsonRaw, 'f', 4);
+        rowData["pearson_normalized"] = QString::number(pearsonNormalized, 'f', 4);
+        rowData["euclidean_raw"] = QString::number(res.euclideanRaw, 'f', 4);
+        rowData["euclidean_normalized"] = QString::number(euclideanNormalized, 'f', 4);
         rowData["score_value"] = comprehensiveScore;
         resultData.append(rowData);
     }

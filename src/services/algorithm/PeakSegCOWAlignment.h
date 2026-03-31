@@ -24,5 +24,13 @@ public:
     ProcessingResult process(const QList<Curve*>& inputCurves,
                              const QVariantMap& params,
                              QString& error) override;
+
+    /**
+     * 仅基于参考曲线计算 PeakSeg 分段起点（1-based，与 process 内分段一致）。
+     * 用于微调边界等需与对齐分段一致的场景。
+     */
+    static QVector<int> referenceSegmentStarts1Based(const Curve* ref,
+                                                     const QVariantMap& params,
+                                                     QString& error);
 };
 

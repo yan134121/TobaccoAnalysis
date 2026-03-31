@@ -18,6 +18,8 @@ struct ProcessingResult
     // Key: 结果的名称 (e.g., "smoothed", "derivative1")
     // Value: 该名称对应的曲线列表 (通常只有一条)
     QMap<QString, QList<Curve*>> namedCurves;
+    /** 可选元数据（如 PeakSeg 分段起点），不影响仅使用 namedCurves 的调用方 */
+    QVariantMap metadata;
 };
 
 

@@ -245,6 +245,8 @@ private:
     bool m_drawScheduled = false;
     bool m_recalcScheduled = false;
     bool m_sumCompareMode = false;
+    // 双曲线加和切换期间，抑制 selectionChangedByType 的重入重复修改
+    bool m_inTwoCurveSwitching = false;
 
     // 曲线数据与图例名称缓存，降低重复数据库访问与字符串拼接
     QHash<int, QVector<QPointF>> m_curveCache;   // <样本ID, 曲线点缓存>

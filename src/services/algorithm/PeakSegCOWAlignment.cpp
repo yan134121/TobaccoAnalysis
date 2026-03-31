@@ -2,6 +2,7 @@
 
 #include "core/entities/Curve.h"
 
+#include <QCoreApplication>
 #include <QtMath>
 #include <algorithm>
 #include <limits>
@@ -175,6 +176,200 @@ static QVector<int> buildUniformRangeStarts0(int n, int rangeCount)
     return starts0;
 }
 
+/** 解析 params["ranges"]（每行 1-based 闭区间）与 range_prominences；为空则按 rangeCount 均分 */
+static void resolveMultiRanges(
+    const QVariantMap& params,
+    int n1,
+    double minProm,
+    int rangeCount,
+    QVector<int>& outRangeStarts0,
+    QVector<int>& outRangeEnds0,
+    QVector<double>& outPromPerRange)
+{
+    outRangeStarts0.clear();
+    outRangeEnds0.clear();
+    outPromPerRange.clear();
+
+    const QVariantList rangesVar = params.value(QStringLiteral("ranges")).toList();
+    if (!rangesVar.isEmpty()) {
+        for (const QVariant& rv : rangesVar) {
+            const QVariantList row = rv.toList();
+            if (row.size() < 2) continue;
+            const int a1 = row[0].toInt();
+            const int b1 = row[1].toInt();
+            const int s0 = qMax(0, a1 - 1);
+            const int e0 = qMin(n1 - 1, b1 - 1);
+            if (s0 > e0) continue;
+            outRangeStarts0.push_back(s0);
+            outRangeEnds0.push_back(e0);
+        }
+        if (outRangeStarts0.isEmpty()) {
+            QVector<int> starts0 = buildUniformRangeStarts0(n1, rangeCount);
+            for (int i = 0; i < starts0.size(); ++i) {
+                const int s0 = starts0[i];
+                int e0 = (i + 1 < starts0.size()) ? (starts0[i + 1] - 1) : (n1 - 1);
+                if (e0 < s0) e0 = s0;
+                outRangeStarts0.push_back(s0);
+                outRangeEnds0.push_back(e0);
+                outPromPerRange.push_back(minProm);
+            }
+            return;
+        }
+        const QVariantList promVar = params.value(QStringLiteral("range_prominences")).toList();
+        for (int i = 0; i < outRangeStarts0.size(); ++i) {
+            const double p = (i < promVar.size()) ? promVar[i].toDouble() : minProm;
+            outPromPerRange.push_back(p);
+        }
+        return;
+    }
+
+    const QVector<int> starts0 = buildUniformRangeStarts0(n1, rangeCount);
+    for (int i = 0; i < starts0.size(); ++i) {
+        const int s0 = starts0[i];
+        int e0 = (i + 1 < starts0.size()) ? (starts0[i + 1] - 1) : (n1 - 1);
+        if (e0 < s0) e0 = s0;
+        outRangeStarts0.push_back(s0);
+        outRangeEnds0.push_back(e0);
+        outPromPerRange.push_back(minProm);
+    }
+}
+
+/** 峰检测 + 聚类分段，与 process 内逻辑一致 */
+static bool computePeakSegSegments(
+    const QVector<double>& chrom1,
+    const QVector<double>& refSmooth,
+    const QVariantMap& params,
+    double minProm,
+    int maxClusterGap,
+    int n1,
+    int rangeCount,
+    QVector<int>& segStarts0,
+    QVector<int>& segEnds0,
+    QString& error)
+{
+    QVector<int> rangeStarts0;
+    QVector<int> rangeEnds0;
+    QVector<double> rangeProms;
+    resolveMultiRanges(params, n1, minProm, rangeCount, rangeStarts0, rangeEnds0, rangeProms);
+
+    QVector<int> allPeakLocs0;
+    for (int ri = 0; ri < rangeStarts0.size(); ++ri) {
+        const int rStart0 = qMax(0, rangeStarts0[ri]);
+        const int rEnd0 = qMin(n1 - 1, rangeEnds0[ri]);
+        if (rStart0 >= rEnd0) continue;
+
+        QVector<double> seg;
+        seg.reserve(rEnd0 - rStart0 + 1);
+        double segMax = 0.0;
+        for (int i = rStart0; i <= rEnd0; ++i) {
+            seg.push_back(refSmooth[i]);
+            segMax = qMax(segMax, refSmooth[i]);
+        }
+
+        const double prom_i = rangeProms.value(ri, minProm);
+        double baseProm = prom_i;
+        if (prom_i <= 1.0) {
+            baseProm = prom_i * segMax;
+            if (baseProm < std::numeric_limits<double>::epsilon()) baseProm = prom_i;
+        }
+
+        const QVector<Peak> pks = myFindPeaksProminence(seg, baseProm);
+        for (const Peak& pk : pks) {
+            const int loc0 = (pk.loc1 - 1) + rStart0;
+            if (loc0 >= 0 && loc0 < n1) allPeakLocs0.push_back(loc0);
+        }
+    }
+
+    std::sort(allPeakLocs0.begin(), allPeakLocs0.end());
+    allPeakLocs0.erase(std::unique(allPeakLocs0.begin(), allPeakLocs0.end()), allPeakLocs0.end());
+
+    segStarts0.clear();
+    segEnds0.clear();
+
+    if (allPeakLocs0.isEmpty()) {
+        int step = int(qCeil(double(n1) / 20.0));
+        if (step <= 0) step = n1;
+        for (int s0 = 0; s0 < n1; s0 += step) segStarts0.push_back(s0);
+        for (int i = 0; i < segStarts0.size(); ++i) {
+            const int e0 = (i + 1 < segStarts0.size()) ? (segStarts0[i + 1] - 1) : (n1 - 1);
+            segEnds0.push_back(e0);
+        }
+    } else {
+        QVector<QVector<int>> clusters;
+        QVector<int> current;
+        current.push_back(allPeakLocs0[0]);
+        for (int i = 1; i < allPeakLocs0.size(); ++i) {
+            if (allPeakLocs0[i] - allPeakLocs0[i - 1] <= maxClusterGap) {
+                current.push_back(allPeakLocs0[i]);
+            } else {
+                clusters.push_back(current);
+                current.clear();
+                current.push_back(allPeakLocs0[i]);
+            }
+        }
+        clusters.push_back(current);
+
+        QVector<int> centers0;
+        centers0.reserve(clusters.size());
+        for (const auto& c : clusters) {
+            if (c.isEmpty()) continue;
+            QVector<int> sorted = c;
+            std::sort(sorted.begin(), sorted.end());
+            double med = 0.0;
+            const int mid = sorted.size() / 2;
+            if (sorted.size() % 2 == 1) med = sorted[mid];
+            else med = 0.5 * (sorted[mid - 1] + sorted[mid]);
+            centers0.push_back(int(qRound(med)));
+        }
+        std::sort(centers0.begin(), centers0.end());
+
+        QVector<int> ends0;
+        for (int k = 0; k < centers0.size() - 1; ++k) {
+            const int left0 = centers0[k];
+            const int right0 = centers0[k + 1];
+            int split0 = left0;
+            if (right0 - left0 <= 1) {
+                split0 = left0;
+            } else {
+                int bestIdx = left0;
+                double bestVal = refSmooth[left0];
+                for (int i = left0; i <= right0; ++i) {
+                    if (refSmooth[i] < bestVal) {
+                        bestVal = refSmooth[i];
+                        bestIdx = i;
+                    }
+                }
+                split0 = bestIdx;
+            }
+            ends0.push_back(split0);
+        }
+
+        segStarts0.push_back(0);
+        for (int e : ends0) segStarts0.push_back(qMin(n1 - 1, e + 1));
+
+        segEnds0 = ends0;
+        segEnds0.push_back(n1 - 1);
+
+        QVector<int> cleanStarts, cleanEnds;
+        for (int i = 0; i < segStarts0.size(); ++i) {
+            int s0 = segStarts0[i];
+            int e0 = segEnds0.value(i, n1 - 1);
+            if (i > 0 && s0 <= cleanStarts.last()) continue;
+            if (e0 < s0) e0 = s0;
+            cleanStarts.push_back(s0);
+            cleanEnds.push_back(e0);
+        }
+        segStarts0 = cleanStarts;
+        segEnds0 = cleanEnds;
+    }
+
+    if (segStarts0.isEmpty()) {
+        error = QCoreApplication::translate("PeakSegCOWAlignment", "分段失败，无法执行对齐");
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 QString PeakSegCOWAlignment::stepName() const
@@ -195,7 +390,40 @@ QVariantMap PeakSegCOWAlignment::defaultParameters() const
     p["t"] = 50;
     p["smooth_span"] = 5;
     p["range_count"] = 3; // 未提供 ranges 时的默认均分段数
+    p["ranges"] = QVariantList(); // 非空时：每元素为 [start1,end1]（1-based 闭区间）
+    p["range_prominences"] = QVariantList(); // 与 ranges 行数对应；可省略则用 min_prominence
     return p;
+}
+
+QVector<int> PeakSegCOWAlignment::referenceSegmentStarts1Based(const Curve* ref,
+                                                               const QVariantMap& params,
+                                                               QString& error)
+{
+    QVector<int> starts1;
+    if (!ref) {
+        error = QCoreApplication::translate("PeakSegCOWAlignment", "参考曲线为空");
+        return starts1;
+    }
+    const QVector<QPointF> refData = ref->data();
+    QVector<double> chrom1;
+    chrom1.reserve(refData.size());
+    for (const auto& p : refData) chrom1.append(p.y());
+    const int n1 = chrom1.size();
+    if (n1 < 2) {
+        error = QCoreApplication::translate("PeakSegCOWAlignment", "参考曲线数据点过少");
+        return starts1;
+    }
+    const double minProm = params.value(QStringLiteral("min_prominence"), 0.05).toDouble();
+    const int maxClusterGap = params.value(QStringLiteral("max_cluster_gap"), 5).toInt();
+    const int smoothSpan = qMax(1, params.value(QStringLiteral("smooth_span"), 5).toInt());
+    const int rangeCount = qMax(1, params.value(QStringLiteral("range_count"), 3).toInt());
+    const QVector<double> refSmooth = movmean(chrom1, smoothSpan);
+    QVector<int> segStarts0;
+    QVector<int> segEnds0;
+    if (!computePeakSegSegments(chrom1, refSmooth, params, minProm, maxClusterGap, n1, rangeCount, segStarts0, segEnds0, error))
+        return starts1;
+    for (int s0 : segStarts0) starts1.append(s0 + 1);
+    return starts1;
 }
 
 ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
@@ -243,137 +471,16 @@ ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
     int rangeCount = qMax(1, params.value("range_count", 3).toInt());
 
     // 参考平滑
-    QVector<double> refSmooth = movmean(chrom1, smoothSpan);
+    const QVector<double> refSmooth = movmean(chrom1, smoothSpan);
 
-    // === 多区间独立峰检测（这里 ranges 由 rangeCount 均分生成；prominence 采用“相对缩放规则”）===
-    QVector<int> rangeStarts0 = buildUniformRangeStarts0(n1, rangeCount);
-    QVector<int> rangeEnds0;
-    rangeEnds0.reserve(rangeStarts0.size());
-    for (int i = 0; i < rangeStarts0.size(); ++i) {
-        int s0 = rangeStarts0[i];
-        int e0 = (i + 1 < rangeStarts0.size()) ? (rangeStarts0[i + 1] - 1) : (n1 - 1);
-        if (e0 < s0) e0 = s0;
-        rangeEnds0.push_back(e0);
-    }
-
-    QVector<int> allPeakLocs0; // 0-based in chrom1
-    for (int ri = 0; ri < rangeStarts0.size(); ++ri) {
-        int rStart0 = qMax(0, rangeStarts0[ri]);
-        int rEnd0 = qMin(n1 - 1, rangeEnds0[ri]);
-        if (rStart0 >= rEnd0) continue;
-
-        QVector<double> seg;
-        seg.reserve(rEnd0 - rStart0 + 1);
-        double segMax = 0.0;
-        for (int i = rStart0; i <= rEnd0; ++i) {
-            seg.push_back(refSmooth[i]);
-            segMax = qMax(segMax, refSmooth[i]);
-        }
-
-        double prom_i = minProm; // GUI 复用时只有一个 prominence
-        double baseProm = prom_i;
-        if (prom_i <= 1.0) {
-            baseProm = prom_i * segMax;
-            if (baseProm < std::numeric_limits<double>::epsilon()) baseProm = prom_i;
-        }
-
-        QVector<Peak> pks = myFindPeaksProminence(seg, baseProm);
-        for (const Peak& pk : pks) {
-            int loc0 = (pk.loc1 - 1) + rStart0;
-            if (loc0 >= 0 && loc0 < n1) allPeakLocs0.push_back(loc0);
-        }
-    }
-
-    std::sort(allPeakLocs0.begin(), allPeakLocs0.end());
-    allPeakLocs0.erase(std::unique(allPeakLocs0.begin(), allPeakLocs0.end()), allPeakLocs0.end());
-
-    // === 峰聚类 -> 谷底分段 ===
     QVector<int> segStarts0;
     QVector<int> segEnds0;
-
-    if (allPeakLocs0.isEmpty()) {
-        // 无峰：等长分段（MATLAB: s=ceil(n1/20)）
-        int step = int(qCeil(double(n1) / 20.0));
-        if (step <= 0) step = n1;
-        for (int s0 = 0; s0 < n1; s0 += step) segStarts0.push_back(s0);
-        for (int i = 0; i < segStarts0.size(); ++i) {
-            int e0 = (i + 1 < segStarts0.size()) ? (segStarts0[i + 1] - 1) : (n1 - 1);
-            segEnds0.push_back(e0);
-        }
-    } else {
-        // 聚类
-        QVector<QVector<int>> clusters;
-        QVector<int> current;
-        current.push_back(allPeakLocs0[0]);
-        for (int i = 1; i < allPeakLocs0.size(); ++i) {
-            if (allPeakLocs0[i] - allPeakLocs0[i - 1] <= maxClusterGap) {
-                current.push_back(allPeakLocs0[i]);
-            } else {
-                clusters.push_back(current);
-                current.clear();
-                current.push_back(allPeakLocs0[i]);
-            }
-        }
-        clusters.push_back(current);
-
-        QVector<int> centers0;
-        centers0.reserve(clusters.size());
-        for (const auto& c : clusters) {
-            if (c.isEmpty()) continue;
-            QVector<int> sorted = c;
-            std::sort(sorted.begin(), sorted.end());
-            double med;
-            int mid = sorted.size() / 2;
-            if (sorted.size() % 2 == 1) med = sorted[mid];
-            else med = 0.5 * (sorted[mid - 1] + sorted[mid]);
-            centers0.push_back(int(qRound(med)));
-        }
-        std::sort(centers0.begin(), centers0.end());
-
-        QVector<int> ends0;
-        for (int k = 0; k < centers0.size() - 1; ++k) {
-            int left0 = centers0[k];
-            int right0 = centers0[k + 1];
-            int split0 = left0;
-            if (right0 - left0 <= 1) {
-                split0 = left0;
-            } else {
-                int bestIdx = left0;
-                double bestVal = refSmooth[left0];
-                for (int i = left0; i <= right0; ++i) {
-                    if (refSmooth[i] < bestVal) {
-                        bestVal = refSmooth[i];
-                        bestIdx = i;
-                    }
-                }
-                split0 = bestIdx;
-            }
-            ends0.push_back(split0);
-        }
-
-        segStarts0.push_back(0);
-        for (int e : ends0) segStarts0.push_back(qMin(n1 - 1, e + 1));
-
-        segEnds0 = ends0;
-        segEnds0.push_back(n1 - 1);
-
-        // 清理可能的重复/逆序
-        QVector<int> cleanStarts, cleanEnds;
-        for (int i = 0; i < segStarts0.size(); ++i) {
-            int s0 = segStarts0[i];
-            int e0 = segEnds0.value(i, n1 - 1);
-            if (i > 0 && s0 <= cleanStarts.last()) continue;
-            if (e0 < s0) e0 = s0;
-            cleanStarts.push_back(s0);
-            cleanEnds.push_back(e0);
-        }
-        segStarts0 = cleanStarts;
-        segEnds0 = cleanEnds;
-    }
+    if (!computePeakSegSegments(chrom1, refSmooth, params, minProm, maxClusterGap, n1, rangeCount, segStarts0, segEnds0, error))
+        return result;
 
     const int m = segStarts0.size();
     if (m <= 0) {
-        error = QObject::tr("分段失败，无法执行对齐");
+        error = QCoreApplication::translate("PeakSegCOWAlignment", "分段失败，无法执行对齐");
         return result;
     }
 
@@ -526,6 +633,11 @@ ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
     Curve* alignedCurve = new Curve(alignedPoints, tgt->name() + QObject::tr(" (PeakSeg-COW对齐到参考)"));
     alignedCurve->setSampleId(tgt->sampleId());
     result.namedCurves["aligned"].append(alignedCurve);
+
+    QVariantList metaStarts;
+    for (int s0 : segStarts0) metaStarts.append(s0 + 1);
+    result.metadata.insert(QStringLiteral("segment_starts_1based"), metaStarts);
+    result.metadata.insert(QStringLiteral("segment_count"), m);
     return result;
 }
 

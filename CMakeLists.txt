@@ -79,6 +79,8 @@ file(GLOB_RECURSE SERVICE_FILES CONFIGURE_DEPENDS
 list(APPEND SERVICE_FILES
     "${PROJECT_SOURCE_DIR}/services/algorithm/PlainRmse.cpp"
     "${PROJECT_SOURCE_DIR}/services/algorithm/PlainRmse.h"
+    "${PROJECT_SOURCE_DIR}/services/algorithm/ChromatogramCalibTables.cpp"
+    "${PROJECT_SOURCE_DIR}/services/algorithm/ChromatogramCalibTables.h"
 )
 list(REMOVE_DUPLICATES SERVICE_FILES)
 
@@ -398,4 +400,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Enabling AddressSanitizer")
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=address)
+endif()
+
+option(BUILD_CHROMATOGRAM_PARITY_TEST "Build chromatogram MATLAB parity self-test executable" ON)
+if(BUILD_CHROMATOGRAM_PARITY_TEST)
+    add_subdirectory(tests)
 endif()

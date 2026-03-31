@@ -17,6 +17,9 @@
 #include "services/algorithm/FindPeaks.h"       // 峰检测算法
 #include "services/algorithm/COWAlignment.h"    // COW峰对齐算法
 #include "services/algorithm/PeakSegCOWAlignment.h" // PeakSeg-COW峰对齐算法（MATLAB移植）
+#include "services/algorithm/ChromatogramSegmentFinetune.h"
+#include "services/algorithm/ChromatogramDifferenceMetrics.h"
+#include "services/algorithm/ChromatogramCalibTables.h"
 // 工序大热重数据访问与实体
 #include "data_access/ProcessTgBigDataDAO.h"
 #include "core/entities/ProcessTgBigData.h"
@@ -31,6 +34,96 @@
 #include <QDebug>
 #include <QString>
 #include <QElapsedTimer>
+
+namespace {
+
+/** Sepu_align_batch.m 中 opts.ranges / opts.rangeProm */
+static QVariantMap peakSegMatlabSepuAlignBatchParams()
+{
+    QVariantMap extra;
+    QVariantList ranges;
+    const int R[][2] = {
+        {1, 600}, {601, 1115}, {1116, 2020}, {2021, 3925}, {3926, 5950},
+        {5951, 6815}, {6816, 8305}, {8306, 8651}, {8652, 9875}, {9875, 11630}
+    };
+    for (int i = 0; i < 10; ++i)
+        ranges.append(QVariant(QVariantList{R[i][0], R[i][1]}));
+    extra.insert(QStringLiteral("ranges"), ranges);
+    QVariantList proms;
+    const double P[] = {1, 0.1, 0.05, 0.05, 0.05, 0.05, 0.07, 0.1, 0.05, 0.05};
+    for (int i = 0; i < 10; ++i) proms.append(P[i]);
+    extra.insert(QStringLiteral("range_prominences"), proms);
+    return extra;
+}
+
+static QSharedPointer<Curve> chromPreferredCurveForAlignment(const SampleDataFlexible& sample,
+                                                            const ProcessingParameters& params)
+{
+    if (params.chromClipEnabled) {
+        for (const StageData& st : sample.stages) {
+            if (st.stageName == StageName::Clip && st.curve) return st.curve;
+        }
+    }
+    for (const StageData& st : sample.stages) {
+        if (st.stageName == StageName::BaselineCorrection && st.curve) return st.curve;
+    }
+    for (const StageData& st : sample.stages) {
+        if (st.stageName == StageName::RawData && st.curve) return st.curve;
+    }
+    return nullptr;
+}
+
+static QVariantList vectorDoubleToVariantList(const QVector<double>& v)
+{
+    QVariantList o;
+    for (double x : v) o.append(x);
+    return o;
+}
+
+/** 与样品 Excel 标定表匹配的键（默认短码）；空则无法查映射 */
+static QString chromCalibKeyForSample(const SampleIdentifier& id)
+{
+    return id.shortCode.trimmed();
+}
+
+/** all_norm.m：各样品段面积除以参考样品对应段面积 */
+static void chromNormalizeAreaRowsDivideByReference(QVector<QVector<double>>& rows,
+                                                    const QVector<int>& sampleIds,
+                                                    int referenceSampleId)
+{
+    if (referenceSampleId <= 0 || rows.size() != sampleIds.size())
+        return;
+    int refIdx = -1;
+    for (int i = 0; i < sampleIds.size(); ++i) {
+        if (sampleIds[i] == referenceSampleId) {
+            refIdx = i;
+            break;
+        }
+    }
+    if (refIdx < 0 || refIdx >= rows.size())
+        return;
+    const QVector<double>& refA = rows[refIdx];
+    const double eps = 1e-15;
+    for (int i = 0; i < rows.size(); ++i) {
+        for (int j = 0; j < rows[i].size() && j < refA.size(); ++j) {
+            const double den = qMax(qAbs(refA[j]), eps);
+            rows[i][j] = rows[i][j] / den;
+        }
+    }
+}
+
+static void chromForceSegmentUnitAtIndex(QVector<QVector<double>>& rows, int segmentIndex1Based)
+{
+    if (segmentIndex1Based < 1)
+        return;
+    const int k = segmentIndex1Based - 1;
+    for (QVector<double>& row : rows) {
+        if (k < row.size())
+            row[k] = 1.0;
+    }
+}
+
+} // namespace
 
 // 构造函数中注册所有算法
 DataProcessingService::DataProcessingService(QObject *parent) : QObject(parent) {
@@ -630,7 +723,7 @@ SampleDataFlexible DataProcessingService::runChromatographPipeline(int sampleId,
     DEBUG_LOG << "Chromatograph pipeline running in thread:" << QThread::currentThread();
     SampleDataFlexible sampleData;
     sampleData.sampleId = sampleId;
-    sampleData.dataType = DataType::TG_SMALL;
+    sampleData.dataType = DataType::CHROMATOGRAM;
     QString error;
     SampleDAO dao;
 
@@ -708,6 +801,32 @@ SampleDataFlexible DataProcessingService::runChromatographPipeline(int sampleId,
         }
     }
 
+    // --- 色谱裁剪（BaseCorrect_data_cut：对基线校正后曲线按索引或 X 范围截取） ---
+    if (params.chromClipEnabled) {
+        const QVector<QPointF> pts = currentCurve->data();
+        QVector<QPointF> out;
+        if (params.chromClipByIndex) {
+            const int i0 = qMax(0, params.chromClipStartIndex1 - 1);
+            const int i1 = qMin(pts.size() - 1, params.chromClipEndIndex1 - 1);
+            if (i0 <= i1) {
+                for (int i = i0; i <= i1; ++i) out.append(pts[i]);
+            }
+        } else if (params.chromClipMaxX > params.chromClipMinX) {
+            for (const QPointF& p : pts) {
+                if (p.x() >= params.chromClipMinX && p.x() <= params.chromClipMaxX) out.append(p);
+            }
+        }
+        if (!out.isEmpty()) {
+            stage.stageName = StageName::Clip;
+            stage.curve = QSharedPointer<Curve>::create(out, QStringLiteral("裁剪后"));
+            stage.curve->setSampleId(sampleId);
+            stage.algorithm = AlgorithmType::Clip;
+            stage.isSegmented = false;
+            stage.numSegments = 1;
+            sampleData.stages.append(stage);
+            currentCurve = stage.curve;
+        }
+    }
 
     // DEBUG_LOG << "大热重单样本裁剪数据用时：" << timer.elapsed() << "ms";
     timer.restart();
@@ -799,89 +918,222 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
     if (params.alignmentEnabled && params.referenceSampleId > 0 && m_registeredSteps.contains(alignStepKey)) {
         IProcessingStep* alignStep = m_registeredSteps.value(alignStepKey);
         QString error;
-        // 查找参考样本的曲线（优先使用基线校正后的曲线，没有则用原始数据）
         QSharedPointer<Curve> refCurve;
         for (auto it = batchResults.begin(); it != batchResults.end(); ++it) {
             SampleGroup& group = it.value();
             for (const SampleDataFlexible& sample : group.sampleDatas) {
                 if (sample.sampleId == params.referenceSampleId) {
-                    // 查找参考曲线阶段
-                    for (const StageData& st : sample.stages) {
-                        if (st.stageName == StageName::BaselineCorrection && st.curve) {
-                            refCurve = st.curve;
-                            break;
-                        }
-                    }
-                    if (refCurve.isNull()) {
-                        for (const StageData& st : sample.stages) {
-                            if (st.stageName == StageName::RawData && st.curve) {
-                                refCurve = st.curve;
-                                break;
-                            }
-                        }
-                    }
+                    refCurve = chromPreferredCurveForAlignment(sample, params);
+                    break;
                 }
-                if (!refCurve.isNull()) break;
             }
             if (!refCurve.isNull()) break;
         }
 
-        // 若找到参考曲线，则对其他样本执行对齐并追加阶段数据
+        QVariantMap peakSegAlignParams;
+        if (!refCurve.isNull() && alignStepKey == QStringLiteral("peakseg_cow_alignment")) {
+            peakSegAlignParams.insert(QStringLiteral("min_prominence"), params.peakMinProminence);
+            peakSegAlignParams.insert(QStringLiteral("t"), params.cowMaxWarp);
+            peakSegAlignParams.insert(QStringLiteral("smooth_span"), 5);
+            peakSegAlignParams.insert(QStringLiteral("max_cluster_gap"), 5);
+            if (params.peakSegUseMatlabDefaultRanges) {
+                const QVariantMap matlabExtra = peakSegMatlabSepuAlignBatchParams();
+                for (auto mit = matlabExtra.constBegin(); mit != matlabExtra.constEnd(); ++mit)
+                    peakSegAlignParams.insert(mit.key(), mit.value());
+            } else {
+                const int cappedRangeCount = qMax(1, qMin(params.cowSegmentCount, 10));
+                peakSegAlignParams.insert(QStringLiteral("range_count"), cappedRangeCount);
+            }
+        }
+
         if (!refCurve.isNull()) {
             for (auto it = batchResults.begin(); it != batchResults.end(); ++it) {
                 SampleGroup& group = it.value();
                 for (SampleDataFlexible& sample : group.sampleDatas) {
-                    // 跳过参考样本自身
                     if (sample.sampleId == params.referenceSampleId) continue;
-                    // 目标曲线同样优先使用基线校正后的曲线
-                    QSharedPointer<Curve> tgtCurve;
-                    for (const StageData& st : sample.stages) {
-                        if (st.stageName == StageName::BaselineCorrection && st.curve) {
-                            tgtCurve = st.curve;
-                            break;
-                        }
-                    }
-                    if (tgtCurve.isNull()) {
-                        for (const StageData& st : sample.stages) {
-                            if (st.stageName == StageName::RawData && st.curve) {
-                                tgtCurve = st.curve;
-                                break;
-                            }
-                        }
-                    }
+
+                    const QSharedPointer<Curve> tgtCurve = chromPreferredCurveForAlignment(sample, params);
                     if (tgtCurve.isNull()) continue;
 
-                    // 执行对齐
                     QVariantMap alignParams;
                     if (alignStepKey == QStringLiteral("peakseg_cow_alignment")) {
-                        // PeakSeg-COW（MATLAB 移植）参数映射：minProminence=peakMinProminence, t=cowMaxWarp, ranges=均分 cowSegmentCount
-                        // 其余参数先采用 MATLAB 默认值（smoothSpan=5, maxClusterGap=5）
-                        int cappedRangeCount = qMax(1, qMin(params.cowSegmentCount, 10));
-                        alignParams["min_prominence"] = params.peakMinProminence;
-                        alignParams["t"] = params.cowMaxWarp;
-                        alignParams["range_count"] = cappedRangeCount;
-                        alignParams["smooth_span"] = 5;
-                        alignParams["max_cluster_gap"] = 5;
+                        alignParams = peakSegAlignParams;
                     } else {
-                        // 现有简化 COWAlignment 参数
-                        alignParams["window_size"] = params.cowWindowSize;
-                        alignParams["max_warp"] = params.cowMaxWarp;
-                        alignParams["segment_count"] = params.cowSegmentCount;
-                        alignParams["resample_step"] = params.cowResampleStep;
+                        alignParams.insert(QStringLiteral("window_size"), params.cowWindowSize);
+                        alignParams.insert(QStringLiteral("max_warp"), params.cowMaxWarp);
+                        alignParams.insert(QStringLiteral("segment_count"), params.cowSegmentCount);
+                        alignParams.insert(QStringLiteral("resample_step"), params.cowResampleStep);
                     }
 
                     ProcessingResult ar = alignStep->process({refCurve.data(), tgtCurve.data()}, alignParams, error);
-                    if (ar.namedCurves.contains("aligned") && !ar.namedCurves["aligned"].isEmpty()) {
-                        StageData stage;
-                        stage.stageName = StageName::PeakAlignment;
-                        stage.curve = QSharedPointer<Curve>(ar.namedCurves["aligned"].first());
-                        stage.curve->setSampleId(sample.sampleId);
-                        stage.algorithm = AlgorithmType::PeakAlignment;
-                        stage.isSegmented = false;
-                        stage.numSegments = 1;
-                        sample.stages.append(stage);
+                    if (ar.namedCurves.contains(QStringLiteral("aligned")) && !ar.namedCurves[QStringLiteral("aligned")].isEmpty()) {
+                        StageData stg;
+                        stg.stageName = StageName::PeakAlignment;
+                        stg.curve = QSharedPointer<Curve>(ar.namedCurves[QStringLiteral("aligned")].first());
+                        stg.curve->setSampleId(sample.sampleId);
+                        stg.algorithm = AlgorithmType::PeakAlignment;
+                        stg.isSegmented = false;
+                        stg.numSegments = 1;
+                        for (auto mit = ar.metadata.constBegin(); mit != ar.metadata.constEnd(); ++mit)
+                            stg.metrics.insert(mit.key(), mit.value());
+                        sample.stages.append(stg);
                     }
                 }
+            }
+        }
+    }
+
+    // 分段边界微调（PeakSeg 参考分段模板 + 对齐曲线）
+    if (params.chromFinetuneEnabled && params.peakSegCowEnabled && params.alignmentEnabled
+        && params.referenceSampleId > 0) {
+        QString errFt;
+        for (auto git = batchResults.begin(); git != batchResults.end(); ++git) {
+            SampleGroup& group = git.value();
+            SampleDataFlexible* refSample = nullptr;
+            for (SampleDataFlexible& s : group.sampleDatas) {
+                if (s.sampleId == params.referenceSampleId) {
+                    refSample = &s;
+                    break;
+                }
+            }
+            if (!refSample) continue;
+            const QSharedPointer<Curve> refC = chromPreferredCurveForAlignment(*refSample, params);
+            if (refC.isNull()) continue;
+
+            QVariantMap peakSegAlignParams;
+            peakSegAlignParams.insert(QStringLiteral("min_prominence"), params.peakMinProminence);
+            peakSegAlignParams.insert(QStringLiteral("t"), params.cowMaxWarp);
+            peakSegAlignParams.insert(QStringLiteral("smooth_span"), 5);
+            peakSegAlignParams.insert(QStringLiteral("max_cluster_gap"), 5);
+            if (params.peakSegUseMatlabDefaultRanges) {
+                const QVariantMap matlabExtra = peakSegMatlabSepuAlignBatchParams();
+                for (auto mit = matlabExtra.constBegin(); mit != matlabExtra.constEnd(); ++mit)
+                    peakSegAlignParams.insert(mit.key(), mit.value());
+            } else {
+                const int cappedRangeCount = qMax(1, qMin(params.cowSegmentCount, 10));
+                peakSegAlignParams.insert(QStringLiteral("range_count"), cappedRangeCount);
+            }
+
+            QVector<int> segStarts;
+            if (!params.chromExternalSegmentStartsFile.trimmed().isEmpty()) {
+                segStarts = ChromatogramSegmentStartsIo::loadSegmentStartsOneBasedFromTextFile(
+                    params.chromExternalSegmentStartsFile, errFt);
+                if (segStarts.isEmpty())
+                    continue;
+            } else {
+                segStarts = PeakSegCOWAlignment::referenceSegmentStarts1Based(refC.data(), peakSegAlignParams, errFt);
+                if (segStarts.isEmpty())
+                    continue;
+            }
+
+            for (SampleDataFlexible& sample : group.sampleDatas) {
+                QSharedPointer<Curve> curv;
+                for (const StageData& st : sample.stages) {
+                    if (st.stageName == StageName::PeakAlignment && st.curve) {
+                        curv = st.curve;
+                        break;
+                    }
+                }
+                if (curv.isNull() && sample.sampleId == params.referenceSampleId)
+                    curv = refC;
+                if (curv.isNull()) continue;
+
+                const QVector<QPointF> pts = curv->data();
+                QVector<double> xv, yv;
+                xv.reserve(pts.size());
+                yv.reserve(pts.size());
+                for (const QPointF& p : pts) {
+                    xv.append(p.x());
+                    yv.append(p.y());
+                }
+                const ChromatogramFinetuneResult ft = finetuneSegmentBoundaries(xv, yv, segStarts, params.chromFinetuneAdjustRange);
+                StageData stg;
+                stg.stageName = StageName::SegmentComparison;
+                stg.curve = curv;
+                stg.algorithm = AlgorithmType::Segmentation;
+                stg.isSegmented = true;
+                stg.numSegments = ft.segStartsFinetuned1Based.size();
+                stg.useForPlot = false;
+                stg.metrics.insert(QStringLiteral("segment_areas_finetuned"), vectorDoubleToVariantList(ft.segmentAreasFinetuned));
+                stg.metrics.insert(QStringLiteral("segment_areas_orig"), vectorDoubleToVariantList(ft.segmentAreasOrig));
+                QVariantList sl;
+                for (int v : ft.segStartsFinetuned1Based) sl.append(v);
+                stg.metrics.insert(QStringLiteral("seg_starts_finetuned_1based"), sl);
+                sample.stages.append(stg);
+            }
+        }
+    }
+
+    // 两两差异度（基于 segment_areas_finetuned）
+    if (params.chromDifferencePairwiseEnabled) {
+        for (auto git = batchResults.begin(); git != batchResults.end(); ++git) {
+            SampleGroup& group = git.value();
+            QVector<int> ids;
+            QVector<QVector<double>> rows;
+            ids.reserve(group.sampleDatas.size());
+            for (const SampleDataFlexible& s : group.sampleDatas) {
+                QVector<double> areas;
+                for (const StageData& st : s.stages) {
+                    if (st.stageName != StageName::SegmentComparison) continue;
+                    const QVariantList vl = st.metrics.value(QStringLiteral("segment_areas_finetuned")).toList();
+                    if (vl.isEmpty()) continue;
+                    areas.reserve(vl.size());
+                    for (const QVariant& q : vl) areas.append(q.toDouble());
+                    break;
+                }
+                if (areas.isEmpty()) continue;
+                ids.append(s.sampleId);
+                rows.append(areas);
+            }
+            if (ids.size() < 2) continue;
+
+            if (params.chromSegmentAreaDivideByReferenceForDiff)
+                chromNormalizeAreaRowsDivideByReference(rows, ids, params.referenceSampleId);
+            if (params.chromSegmentForceUnitIndex1 > 0)
+                chromForceSegmentUnitAtIndex(rows, params.chromSegmentForceUnitIndex1);
+
+            QMap<QString, QString> sampleToCalib;
+            QMap<QPair<QString, QString>, double> pairCosine;
+            if (!params.chromCalibSampleMapPath.trimmed().isEmpty()) {
+                QString e;
+                ChromatogramCalibTables::loadSampleToCalibMapWide(params.chromCalibSampleMapPath, sampleToCalib, e);
+            }
+            if (!params.chromCalibPairwiseCosinePath.trimmed().isEmpty()) {
+                QString e;
+                ChromatogramCalibTables::loadCalibPairwiseCosine(params.chromCalibPairwiseCosinePath, pairCosine, e);
+            }
+
+            QVector<double> calibCosinePerPair;
+            const bool useCalib = !sampleToCalib.isEmpty() && !pairCosine.isEmpty();
+            if (useCalib) {
+                int n = ids.size();
+                calibCosinePerPair.reserve(n * (n - 1) / 2);
+                for (int i = 0; i < n - 1; ++i) {
+                    const SampleIdentifier idI = dao.getSampleIdentifierById(ids[i]);
+                    const QString ki = chromCalibKeyForSample(idI);
+                    for (int j = i + 1; j < n; ++j) {
+                        const SampleIdentifier idJ = dao.getSampleIdentifierById(ids[j]);
+                        const QString kj = chromCalibKeyForSample(idJ);
+                        double c = ChromatogramCalibTables::calibCosineForPair(sampleToCalib, pairCosine, ki, kj);
+                        if (qIsNaN(c))
+                            c = 0.0;
+                        calibCosinePerPair.append(c);
+                    }
+                }
+            }
+
+            const QVector<double> emptyCalibCos;
+            const QVariantList table = ChromatogramDifferenceMetrics::pairwiseDifferenceTable(
+                ids, rows, params.chromMeanSpcCalibGain,
+                useCalib ? calibCosinePerPair : emptyCalibCos);
+            if (table.isEmpty()) continue;
+            if (!group.sampleDatas.isEmpty()) {
+                StageData stg;
+                stg.stageName = StageName::Difference;
+                stg.algorithm = AlgorithmType::Difference;
+                stg.useForPlot = false;
+                stg.metrics.insert(QStringLiteral("pairwise_segment_area_diff"), table);
+                group.sampleDatas[0].stages.append(stg);
             }
         }
     }

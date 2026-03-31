@@ -15,7 +15,7 @@ class QDialogButtonBox;
 class QSpinBox;
 class QDoubleSpinBox;
 class QComboBox;
-// ... (其他需要的控件)
+class QLineEdit;
 
 
 
@@ -89,7 +89,8 @@ private:
     QWidget* createBaselineTab();
     QWidget* createPeakTab();
     QWidget* createAlignmentTab();
-    
+    QWidget* createChromClipAndMetricsTab();
+
     // 从传入的参数初始化UI
     void setParameters(const ProcessingParameters& params);
 
@@ -144,6 +145,25 @@ private:
     QSpinBox* m_cowMaxWarpSpin = nullptr;
     QSpinBox* m_cowSegmentCountSpin = nullptr;
     QDoubleSpinBox* m_cowResampleStepSpin = nullptr;
+    QCheckBox* m_peakSegMatlabRangesCheck = nullptr;
+
+    // 色谱裁剪 / 微调 / 两两差异度
+    QCheckBox* m_chromClipEnabledCheck = nullptr;
+    QCheckBox* m_chromClipByIndexCheck = nullptr;
+    QSpinBox* m_chromClipStartSpin = nullptr;
+    QSpinBox* m_chromClipEndSpin = nullptr;
+    QDoubleSpinBox* m_chromClipMinXSpin = nullptr;
+    QDoubleSpinBox* m_chromClipMaxXSpin = nullptr;
+    QCheckBox* m_chromFinetuneCheck = nullptr;
+    QSpinBox* m_chromFinetuneRangeSpin = nullptr;
+    QCheckBox* m_chromPairwiseDiffCheck = nullptr;
+    QDoubleSpinBox* m_chromMeanSpcGainSpin = nullptr;
+    QCheckBox* m_chromAreaDivideByRefCheck = nullptr;
+    QSpinBox* m_chromForceUnitSegSpin = nullptr;
+    QLineEdit* m_chromCalibMapPathEdit = nullptr;
+    QLineEdit* m_chromCalibCosPathEdit = nullptr;
+    QLineEdit* m_chromExternalSegPathEdit = nullptr;
+
     // 差异度计算tab
     QCheckBox* m_diffEnabledCheck = nullptr;
     // QComboBox* m_diffMethodCombo = nullptr;

@@ -1281,6 +1281,33 @@ void TgSmallDataProcessDialog::onSumTwoCurvesClicked()
 void TgSmallDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
 {
     const QString& dataType = m_dataTypeName;
+
+    // 小热重（原始数据）加和依赖 m_stageDataCache 中的微分阶段，必须在 clear 之前取出
+    auto getDerivativePointsBySampleId = [this](int sampleId) -> QVector<QPointF> {
+        for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+            const SampleGroup &group = groupIt.value();
+            for (const auto &sample : group.sampleDatas) {
+                if (sample.sampleId != sampleId) {
+                    continue;
+                }
+                for (const StageData &stage : sample.stages) {
+                    if (stage.stageName == StageName::Derivative && stage.curve) {
+                        return stage.curve->data();
+                    }
+                }
+                return {};
+            }
+        }
+        return {};
+    };
+
+    QVector<QPointF> p1;
+    QVector<QPointF> p2;
+    if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+        p1 = getDerivativePointsBySampleId(id1);
+        p2 = getDerivativePointsBySampleId(id2);
+    }
+
     m_sumCompareMode = true;
     m_inTwoCurveSwitching = true;
 
@@ -1308,11 +1335,17 @@ void TgSmallDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
     m_selectedSamples[id1] = buildSampleDisplayName(id1);
     m_selectedSamples[id2] = buildSampleDisplayName(id2);
 
-    QString err;
-    QVector<QPointF> p1 = m_navigatorDao.getSampleCurveData(id1, dataType, err);
-    QVector<QPointF> p2 = m_navigatorDao.getSampleCurveData(id2, dataType, err);
+    if (m_dataTypeName != QStringLiteral("小热重（原始数据）")) {
+        QString err;
+        p1 = m_navigatorDao.getSampleCurveData(id1, dataType, err);
+        p2 = m_navigatorDao.getSampleCurveData(id2, dataType, err);
+    }
+
     if (p1.isEmpty() || p2.isEmpty()) {
-        QMessageBox::warning(this, tr("提示"), tr("无法读取所选样本的曲线数据。"));
+        const QString warnMsg = (m_dataTypeName == QStringLiteral("小热重（原始数据）"))
+            ? tr("无法读取所选样本的最终微分数据，请先完成处理并生成微分数据。")
+            : tr("无法读取所选样本的曲线数据。");
+        QMessageBox::warning(this, tr("提示"), warnMsg);
         m_sumCompareMode = false;
         if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
         m_inTwoCurveSwitching = false;

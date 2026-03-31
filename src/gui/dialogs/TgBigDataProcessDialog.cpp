@@ -974,6 +974,29 @@ void TgBigDataProcessDialog::onSumTwoCurvesClicked()
 void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
 {
     const QString dataType = QStringLiteral("大热重");
+
+    // 必须在清空 m_stageDataCache 之前取出微分数据，否则缓存已被清空无法加和
+    auto getDerivativePointsBySampleId = [this](int sampleId) -> QVector<QPointF> {
+        for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+            const SampleGroup &group = groupIt.value();
+            for (const auto &sample : group.sampleDatas) {
+                if (sample.sampleId != sampleId) {
+                    continue;
+                }
+                for (const StageData &stage : sample.stages) {
+                    if (stage.stageName == StageName::Derivative && stage.curve) {
+                        return stage.curve->data();
+                    }
+                }
+                return {};
+            }
+        }
+        return {};
+    };
+
+    const QVector<QPointF> p1 = getDerivativePointsBySampleId(id1);
+    const QVector<QPointF> p2 = getDerivativePointsBySampleId(id2);
+
     m_sumCompareMode = true;
     m_inTwoCurveSwitching = true;
 
@@ -1001,11 +1024,8 @@ void TgBigDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
     m_selectedSamples[id1] = buildSampleDisplayName(id1);
     m_selectedSamples[id2] = buildSampleDisplayName(id2);
 
-    QString err;
-    QVector<QPointF> p1 = m_navigatorDao.getSampleCurveData(id1, dataType, err);
-    QVector<QPointF> p2 = m_navigatorDao.getSampleCurveData(id2, dataType, err);
     if (p1.isEmpty() || p2.isEmpty()) {
-        QMessageBox::warning(this, tr("提示"), tr("无法读取所选样本的曲线数据。"));
+        QMessageBox::warning(this, tr("提示"), tr("无法读取所选样本的最终微分数据，请先完成处理并生成微分数据。"));
         m_sumCompareMode = false;
         if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
         m_inTwoCurveSwitching = false;

@@ -105,7 +105,7 @@ private slots:
     void onCalculationFinished();
 
     void onStartComparison();
-    
+
     // 处理左侧导航器的右键菜单
     void onLeftNavigatorContextMenu(const QPoint &pos);
     
@@ -185,7 +185,7 @@ private:
     ChartView* m_chartView1;
     ChartView* m_chartView2;
     ChartView* m_chartView3;
-    // ChartView* m_chartView4;
+    ChartView* m_chartView4;
     // ChartView* m_chartView5;
 
     

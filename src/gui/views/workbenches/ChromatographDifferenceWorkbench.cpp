@@ -8,6 +8,7 @@
 #include "data_access/SingleTobaccoSampleDAO.h" // 修改: 包含对应的头文件
 #include "common.h"
 #include "ColorUtils.h"
+#include "gui/dialogs/TwoCurvePickDialog.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -107,9 +108,32 @@ void ChromatographDifferenceWorkbench::setupUi()
         "}"
     );
     
+    m_compareAnyTwoCurvesButton = new QPushButton("任意两条曲线差异度计算");
+    m_compareAnyTwoCurvesButton->setMinimumHeight(30);
+    m_compareAnyTwoCurvesButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #34a853;"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "  padding: 5px 10px;"
+        "  font-weight: bold;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #2d924a;"
+        "}"
+        "QPushButton:pressed {"
+        "  background-color: #257a3e;"
+        "}"
+    );
+
+    QHBoxLayout* buttonLayout = new QHBoxLayout;
+    buttonLayout->addWidget(m_bestSampleRankingButton);
+    buttonLayout->addWidget(m_compareAnyTwoCurvesButton);
+
     // 添加组件到主布局
     mainLayout->addWidget(splitter);
-    mainLayout->addWidget(m_bestSampleRankingButton);
+    mainLayout->addLayout(buttonLayout);
     
     setWidget(container); // QMdiSubWindow 设置子窗口内容
 
@@ -118,6 +142,8 @@ void ChromatographDifferenceWorkbench::setupUi()
             this, &ChromatographDifferenceWorkbench::onResultTableRowClicked);
     connect(m_bestSampleRankingButton, &QPushButton::clicked,
             this, &ChromatographDifferenceWorkbench::onShowBestSampleRankingTable);
+    connect(m_compareAnyTwoCurvesButton, &QPushButton::clicked,
+            this, &ChromatographDifferenceWorkbench::onCompareAnyTwoCurves);
 }
 
 
@@ -256,6 +282,98 @@ void ChromatographDifferenceWorkbench::calculateAndDisplay()
     m_chartView->replot();
 }
 
+
+
+void ChromatographDifferenceWorkbench::onCompareAnyTwoCurves()
+{
+    QList<QPair<int, QString>> items;
+    QMap<int, QSharedPointer<Curve>> curveByPickId;
+    QMap<int, QString> nameByPickId;
+
+    int pickId = 0;
+    QMap<int, int> sampleCurveCounter;
+    SingleTobaccoSampleDAO sampleDao;
+
+    for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
+        const SampleGroup& group = it.value();
+        for (const SampleDataFlexible& sample : group.sampleDatas) {
+            const int sampleId = sample.sampleId;
+            SampleIdentifier sid = sampleDao.getSampleIdentifierById(sampleId);
+
+            QString sampleName = QString("%1-%2-%3-%4")
+                                     .arg(sid.projectName)
+                                     .arg(sid.batchCode)
+                                     .arg(sid.shortCode)
+                                     .arg(sid.parallelNo);
+            if (sampleName.trimmed().replace("-", "").isEmpty()) {
+                sampleName = QStringLiteral("样本 %1").arg(sampleId);
+            }
+
+            for (const StageData& stage : sample.stages) {
+                if (stage.curve.isNull()) continue;
+                if (!stage.useForPlot) continue;
+
+                const int idx = ++sampleCurveCounter[sampleId];
+                const QString displayName = QStringLiteral("%1 [%2-曲线%3]")
+                                                .arg(sampleName)
+                                                .arg(stageNameToString(stage.stageName))
+                                                .arg(idx);
+
+                curveByPickId.insert(pickId, stage.curve);
+                nameByPickId.insert(pickId, displayName);
+                items.append(qMakePair(pickId, displayName));
+                ++pickId;
+            }
+        }
+    }
+
+    if (items.size() < 2) {
+        QMessageBox::warning(this, tr("提示"), tr("可用于对比的曲线不足（需要至少2条）。"));
+        return;
+    }
+
+    int id1 = -1;
+    int id2 = -1;
+    if (!TwoCurvePickDialog::pickTwo(this, items, id1, id2)) {
+        return;
+    }
+
+    QSharedPointer<Curve> curve1 = curveByPickId.value(id1);
+    QSharedPointer<Curve> curve2 = curveByPickId.value(id2);
+    if (curve1.isNull() || curve2.isNull()) {
+        QMessageBox::warning(this, tr("提示"), tr("未找到所选曲线数据，请重试。"));
+        return;
+    }
+
+
+    if (!m_appInitializer || !m_appInitializer->getSampleComparisonService()) {
+        QMessageBox::critical(this, tr("严重错误"), tr("差异度对比服务不可用。"));
+        return;
+    }
+
+    SampleComparisonService* comparer = m_appInitializer->getSampleComparisonService();
+    const double plainRmse = comparer->calculatePlainRMSE(curve1, curve2);
+    const double nrmse = comparer->calculateNRMSE(curve1, curve2);
+    const double pearson = comparer->calculatePearsonCorrelation(curve1, curve2);
+    const double euclidean = comparer->calculateEuclideanDistance(curve1, curve2);
+
+    const QString name1 = nameByPickId.value(id1);
+    const QString name2 = nameByPickId.value(id2);
+
+    const QString detail = tr("样本A：%1\n样本B：%2\n\n"
+                              "RMSE(原始)：%3\n"
+                              "NRMSE：%4\n"
+                              "Pearson：%5\n"
+                              "Euclidean：%6")
+                               .arg(name1)
+                               .arg(name2)
+                               .arg(QString::number(plainRmse, 'f', 4))
+                               .arg(QString::number(nrmse, 'f', 4))
+                               .arg(QString::number(pearson, 'f', 4))
+                               .arg(QString::number(euclidean, 'f', 4));
+
+    QMessageBox::information(this, tr("任意两条曲线差异度结果"), detail);
+}
 
 
 void ChromatographDifferenceWorkbench::onResultTableRowClicked(const QModelIndex &index)

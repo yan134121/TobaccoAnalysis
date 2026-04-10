@@ -59,17 +59,18 @@ static QVariantMap peakSegMatlabSepuAlignBatchParams()
 static QSharedPointer<Curve> chromPreferredCurveForAlignment(const SampleDataFlexible& sample,
                                                             const ProcessingParameters& params)
 {
-    if (params.chromClipEnabled) {
+    // 对齐严格对齐 MATLAB 流程：使用“基线校正后再裁剪”的曲线（Clip 阶段）
+    for (const StageData& st : sample.stages) {
+        if (st.stageName == StageName::Clip && st.curve) return st.curve;
+    }
+
+    // 若未开启裁剪，退化到基线校正（兼容旧参数）
+    if (!params.chromClipEnabled) {
         for (const StageData& st : sample.stages) {
-            if (st.stageName == StageName::Clip && st.curve) return st.curve;
+            if (st.stageName == StageName::BaselineCorrection && st.curve) return st.curve;
         }
     }
-    for (const StageData& st : sample.stages) {
-        if (st.stageName == StageName::BaselineCorrection && st.curve) return st.curve;
-    }
-    for (const StageData& st : sample.stages) {
-        if (st.stageName == StageName::RawData && st.curve) return st.curve;
-    }
+
     return nullptr;
 }
 
@@ -602,18 +603,42 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
         y.append(p.y());
     }
 
-    // 构造阶段数据
-    StageData stage;
-    stage.stageName = StageName::RawData;
-    stage.curve = QSharedPointer<Curve>::create(x, y, "原始微分数据0");
-    stage.curve->setSampleId(sampleId);
-    stage.algorithm = AlgorithmType::None;
-    stage.isSegmented = false;
-    stage.numSegments = 1;
-
-    sampleData.stages.append(stage);
+    // RawData 阶段
+    StageData rawStage;
+    rawStage.stageName = StageName::RawData;
+    rawStage.curve = QSharedPointer<Curve>::create(x, y, "原始微分数据0");
+    rawStage.curve->setSampleId(sampleId);
+    rawStage.algorithm = AlgorithmType::None;
+    rawStage.isSegmented = false;
+    rawStage.numSegments = 1;
+    sampleData.stages.append(rawStage);
 
     DEBUG_LOG << "Sample" << sampleId << "original points:" << x.size();
+
+    // 小热重（非原始数据）同样支持裁剪参数：clippingEnabled / clipMinX / clipMaxX
+    if (params.clippingEnabled && m_registeredSteps.contains("clipping")) {
+        IProcessingStep* clipStep = m_registeredSteps.value("clipping");
+        QVariantMap clipParams;
+        clipParams["min_x"] = params.clipMinX;
+        clipParams["max_x"] = params.clipMaxX;
+
+        ProcessingResult res = clipStep->process({rawStage.curve.data()}, clipParams, error);
+        if (!res.namedCurves.isEmpty() && res.namedCurves.contains("clipped") && !res.namedCurves.value("clipped").isEmpty()) {
+            StageData clipStage;
+            clipStage.stageName = StageName::Clip;
+            clipStage.curve = QSharedPointer<Curve>(res.namedCurves.value("clipped").first());
+            if (!clipStage.curve.isNull()) {
+                clipStage.curve->setSampleId(sampleId);
+            }
+            clipStage.algorithm = AlgorithmType::Clip;
+            clipStage.isSegmented = false;
+            clipStage.numSegments = 1;
+            sampleData.stages.append(clipStage);
+        } else {
+            WARNING_LOG << "TG_SMALL clipping produced empty result, sampleId=" << sampleId
+                        << ", min_x=" << params.clipMinX << ", max_x=" << params.clipMaxX;
+        }
+    }
 
     return sampleData;
 }
@@ -928,6 +953,13 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
                 }
             }
             if (!refCurve.isNull()) break;
+        }
+
+        // 对齐阶段必须以“裁剪后曲线”为输入。若缺失则跳过对齐，避免错误回退到原始曲线导致慢且结果偏差。
+        if (refCurve.isNull()) {
+            WARNING_LOG << "Chromatogram alignment skipped: reference clip curve not found. referenceSampleId="
+                        << params.referenceSampleId;
+            return batchResults;
         }
 
         QVariantMap peakSegAlignParams;

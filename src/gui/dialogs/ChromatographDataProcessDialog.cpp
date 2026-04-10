@@ -25,6 +25,7 @@
 #include <QCursor>
 #include <QStyle>
 #include <QStyleOptionViewItem>
+#include <QInputDialog>
 
 ChromatographDataProcessDialog::ChromatographDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
     QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
@@ -56,8 +57,11 @@ ChromatographDataProcessDialog::ChromatographDataProcessDialog(QWidget *parent, 
     // ChromatographDataProcessDialog* tab1 = new ChromatographDataProcessDialog(this, m_mainNavigator);
     // tabWidget->addTab(tab1, tr("色谱数据处理"));
 
-    // 提前设置默认行为：导航自动绘图默认包含“基线校正 + 峰检测”
+    // 提前设置默认行为：四图流程默认全开（原始->基线->裁剪->对齐）
     m_currentParams.baselineEnabled = true;
+    m_currentParams.chromClipEnabled = true;
+    m_currentParams.alignmentEnabled = true;
+    m_currentParams.peakSegCowEnabled = true;
     m_currentParams.peakDetectionEnabled = true;
 
     // 提前创建参数设置窗口
@@ -100,6 +104,10 @@ ChromatographDataProcessDialog::ChromatographDataProcessDialog(QWidget *parent, 
                 m_selectedSamples.insert(sampleId, name);
             }
             m_suppressItemChanged = false;
+            for (int sampleId : preselected) {
+                m_visibleSamples.insert(sampleId);
+            }
+            updateSelectedSamplesList();
             scheduleRedraw();
         }
     }
@@ -586,7 +594,7 @@ void ChromatographDataProcessDialog::setupUI()
     // m_resetButton = new QPushButton(tr("重置参数"), tab1Widget);
     // m_cancelButton = new QPushButton(tr("取消"), tab1Widget);
     m_parameterButton = new QPushButton("参数设置", tab1Widget);
-    // 【新】增加一个按钮
+    // 【新】增加按钮
     m_startComparisonButton = new QPushButton(tr("计算差异度"));
     // 新增显示/隐藏左侧标签页按钮（导航 + 选中样本）
     m_toggleNavigatorButton = new QPushButton(tr("样本浏览页"), tab1Widget);
@@ -691,24 +699,24 @@ void ChromatographDataProcessDialog::setupMiddlePanel()
     
     m_chartView1 = new ChartView();
     m_chartView2 = new ChartView();
-    m_chartView3 = new ChartView(); // 新增第三个绘图区域用于显示“计算之后”的结果曲线
-    // m_chartView4 = new ChartView();
+    m_chartView3 = new ChartView();
+    m_chartView4 = new ChartView();
     // m_chartView5 = new ChartView();
     if (!m_chartView1 
         || !m_chartView2 
-        // || !m_chartView3 || !m_chartView4 || !m_chartView5
+        || !m_chartView3
+        || !m_chartView4
     ) {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ERROR: Failed to create ChartView!";
     } else {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ChartView created successfully";
     }
 
-    // 将 ChartView 添加到网格中
+    // 将 ChartView 添加到 2x2 网格中：左上原始，右上基线校正，左下裁剪，右下色谱对齐
     m_middleLayout->addWidget(m_chartView1, 0, 0);
     m_middleLayout->addWidget(m_chartView2, 0, 1);
-    m_middleLayout->addWidget(m_chartView3, 1, 0); // 将“计算结果曲线”置于第二行左侧
-    // m_middleLayout->addWidget(m_chartView4, 1, 1);
-    // m_middleLayout->addWidget(m_chartView5, 2, 0); // 显示
+    m_middleLayout->addWidget(m_chartView3, 1, 0);
+    m_middleLayout->addWidget(m_chartView4, 1, 1);
 
     // m_legendPanel = new QWidget();
     // m_legendLayout = new QVBoxLayout(m_legendPanel);
@@ -880,9 +888,8 @@ void ChromatographDataProcessDialog::onClearCurvesClicked()
     // 清除所有绘图区域的曲线，并重置本界面选中状态
     if (m_chartView1) m_chartView1->clearGraphs();
     if (m_chartView2) m_chartView2->clearGraphs();
-    // 峰标记绘制在 m_chartView3 上（基线校正曲线叠加 red 散点）
-    // 之前只清了 1/2，导致“峰标记”残留。
     if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();
@@ -1026,20 +1033,59 @@ void ChromatographDataProcessDialog::prefetchCurveIfNeeded(int sampleId)
 void ChromatographDataProcessDialog::onSelectedSamplesListItemChanged(QListWidgetItem* item)
 {
     if (!item) return;
-    bool isChecked = (item->checkState() == Qt::Checked);
-    int sampleId = item->data(Qt::UserRole).toInt();
+    const bool isChecked = (item->checkState() == Qt::Checked);
+    const int sampleId = item->data(Qt::UserRole).toInt();
+
+    int oldVisibleCount = m_visibleSamples.size();
+
+    // 这里只做“可见集合 + 一次重绘”控制，避免重复触发导致二次/三次重算
     if (isChecked) {
         m_visibleSamples.insert(sampleId);
-        QString legendName = m_selectedSamples.value(sampleId);
-        if (legendName.isEmpty()) legendName = QString("样本 %1").arg(sampleId);
-        addSampleCurve(sampleId, legendName);
-        prefetchCurveIfNeeded(sampleId);
-        scheduleRedraw();
     } else {
         m_visibleSamples.remove(sampleId);
-        removeSampleCurve(sampleId);
-        scheduleRedraw();
     }
+
+    const int newVisibleCount = m_visibleSamples.size();
+
+    // 按要求：当可见曲线达到2条及以上时，每次新增都让用户选择参考曲线
+    if (isChecked && newVisibleCount >= 2 && newVisibleCount > oldVisibleCount) {
+        QList<int> ids = m_visibleSamples.values();
+        std::sort(ids.begin(), ids.end());
+
+        QStringList labels;
+        QMap<QString, int> labelToId;
+        for (int id : ids) {
+            QString name = buildSampleDisplayName(id);
+            if (name.trimmed().isEmpty()) {
+                name = QStringLiteral("样本 %1").arg(id);
+            }
+            const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
+            labels.append(label);
+            labelToId.insert(label, id);
+        }
+
+        int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
+        if (currentIdx < 0) currentIdx = 0;
+
+        bool ok = false;
+        const QString selected = QInputDialog::getItem(
+            this,
+            tr("选择色谱对齐参考样本"),
+            tr("请在当前可见曲线中选择参考样本："),
+            labels,
+            currentIdx,
+            false,
+            &ok);
+
+        if (ok && !selected.isEmpty()) {
+            const int refId = labelToId.value(selected, -1);
+            if (refId > 0) {
+                m_currentParams.referenceSampleId = refId;
+            }
+        }
+    }
+
+    scheduleRedraw();
     updateSelectedStatsInfo();
 }
 
@@ -1692,6 +1738,10 @@ void ChromatographDataProcessDialog::loadNavigatorDataFromMainNavigator()
                                         m_suppressItemChanged = true;
                                         newSampleItem->setCheckState(0, Qt::Checked);
                                         m_suppressItemChanged = false;
+
+                                        // 同步到本界面的已选/可见集合，避免“节点已勾选但图像不显示”
+                                        m_selectedSamples[sampleInfo.id] = buildSampleDisplayName(sampleInfo.id);
+                                        m_visibleSamples.insert(sampleInfo.id);
                                     }
                                 }
                             }
@@ -1701,6 +1751,10 @@ void ChromatographDataProcessDialog::loadNavigatorDataFromMainNavigator()
              }
          }
      }
+
+    // 初次加载导航后刷新“选中样本”列表并触发一次绘图
+    updateSelectedSamplesList();
+    scheduleRedraw();
 }
 
 void ChromatographDataProcessDialog::loadSampleCurve(int sampleId)
@@ -1893,6 +1947,7 @@ void ChromatographDataProcessDialog::recalculateAndUpdatePlot()
     for (int id : m_visibleSamples) {
         sampleIds.append(id);
     }
+    std::sort(sampleIds.begin(), sampleIds.end());
     if (sampleIds.isEmpty()) {
         DEBUG_LOG << "recalculateAndUpdatePlot - 可见样本为空，跳过处理";
         if (m_chartView1) m_chartView1->clearGraphs();
@@ -1908,6 +1963,37 @@ void ChromatographDataProcessDialog::recalculateAndUpdatePlot()
             QTimer::singleShot(0, this, [this]{ recalculateAndUpdatePlot(); });
         }
         return;
+    }
+
+    if (m_currentParams.referenceSampleId <= 0 || !sampleIds.contains(m_currentParams.referenceSampleId)) {
+        m_currentParams.referenceSampleId = sampleIds.first();
+        DEBUG_LOG << "Chromatograph alignment reference sample auto-set to:" << m_currentParams.referenceSampleId;
+    }
+
+    // 对齐阶段必须基于“裁剪后曲线”进行；若参考样本没有裁剪曲线，则自动切换到首个有裁剪曲线的样本
+    if (m_currentParams.alignmentEnabled) {
+        auto hasClipStage = [this](int sid) -> bool {
+            for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
+                const SampleGroup& group = it.value();
+                for (const SampleDataFlexible& s : group.sampleDatas) {
+                    if (s.sampleId != sid) continue;
+                    for (const StageData& st : s.stages) {
+                        if (st.stageName == StageName::Clip && st.curve) return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        if (!hasClipStage(m_currentParams.referenceSampleId)) {
+            for (int sid : sampleIds) {
+                if (hasClipStage(sid)) {
+                    m_currentParams.referenceSampleId = sid;
+                    DEBUG_LOG << "Chromatograph alignment reference auto-switched to clip-ready sample:" << sid;
+                    break;
+                }
+            }
+        }
     }
 
     QStringList idStrList;
@@ -1959,8 +2045,19 @@ void ChromatographDataProcessDialog::onCalculationFinished()
     // b. 调用绘图更新
     updatePlot(); 
 
-    // --- 2. 启用“计算差异度”按钮（至少两个样本组才能计算差异度） ---
-    m_startComparisonButton->setEnabled(m_stageDataCache.size() >= 2);
+    // --- 2. 启用“计算差异度”按钮（至少两条可比较曲线） ---
+    int comparableCurveCount = 0;
+    for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
+        const SampleGroup& group = it.value();
+        for (const SampleDataFlexible& sample : group.sampleDatas) {
+            for (const StageData& stage : sample.stages) {
+                if (stage.useForPlot && !stage.curve.isNull()) {
+                    ++comparableCurveCount;
+                }
+            }
+        }
+    }
+    m_startComparisonButton->setEnabled(comparableCurveCount >= 2);
 
     // // --- 3. 调用绘图更新（根据 SampleGroup -> ParallelSampleData -> StageData 遍历） ---
     // for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
@@ -2116,199 +2213,117 @@ void ChromatographDataProcessDialog::updatePlot()
     m_chartView1->replot();
 
 
-    // --- 2. 更新【裁剪】图表 (m_chartView2) ---
+    // --- 2. 更新【基线校正】图表 (m_chartView2) ---
     m_chartView2->clearGraphs();
-    m_chartView2->setLabels(tr("时间"), tr("重量"));
-    m_chartView2->setPlotTitle("基线校准后数据");
+    m_chartView2->setLabels(tr("响应时间"), tr("强度"));
+    m_chartView2->setPlotTitle(QStringLiteral("基线校正"));
 
+    // --- 3. 更新【裁剪数据】图表 (m_chartView3) ---
+    m_chartView3->clearGraphs();
+    m_chartView3->setLabels(tr("响应时间"), tr("强度"));
+    m_chartView3->setPlotTitle(QStringLiteral("裁剪数据"));
 
+    // --- 4. 更新【色谱对齐】图表 (m_chartView4) ---
+    m_chartView4->clearGraphs();
+    m_chartView4->setLabels(tr("响应时间"), tr("强度"));
+    m_chartView4->setPlotTitle(QStringLiteral("色谱对齐"));
 
-    QElapsedTimer timer;  //  先声明
-    timer.restart();
-
-    DEBUG_LOG << "Updating cleaned curves...";
     for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+        const SampleGroup& group = groupIt.value();
 
-        DEBUG_LOG << "色谱基线校准数据后绘图每次循环用时：" << timer.elapsed() << "ms";
-    timer.restart();
-
-        const QString &groupKey = groupIt.key();
-        const SampleGroup &group = groupIt.value();
-
-        // DEBUG_LOG << "Processing group:" << groupKey
-        //         << " sample count:" << group.sampleDatas.size();
-
-        for (const auto &sample : group.sampleDatas) {
-            int sampleId = sample.sampleId;
+        for (const auto& sample : group.sampleDatas) {
+            const int sampleId = sample.sampleId;
             if (!m_visibleSamples.contains(sampleId)) continue;
-            DEBUG_LOG << "  Sample ID:" << sampleId
-                    << " stage count:" << sample.stages.size();
 
+            SingleTobaccoSampleDAO dao;
+            SampleIdentifier sid = dao.getSampleIdentifierById(sampleId);
+            const QString legendName = QString("%1-%2-%3-%4")
+                                          .arg(sid.projectName)
+                                          .arg(sid.batchCode)
+                                          .arg(sid.shortCode)
+                                          .arg(sid.parallelNo);
+            const QColor color = sampleColorMap.value(sampleId, QColor(200, 30, 30));
 
+            for (const auto& stage : sample.stages) {
+                if (!stage.curve) continue;
 
-            // 在 sample.stages 中查找名字是 "cleaned" 的阶段
-            for (const auto &stage : sample.stages) {
-                // DEBUG_LOG << "    Stage name:" << stage.stageName;
-                if (stage.stageName == StageName::BaselineCorrection && stage.curve) {
-
-                    DEBUG_LOG << "色谱基线校准数据后绘图每次循环用时：" << timer.elapsed() << "ms";
-                    timer.restart();
-
+                if (stage.stageName == StageName::BaselineCorrection) {
                     QSharedPointer<Curve> curve = stage.curve;
-                    // 悬停名称显示为 project_name-batch_code-short_code-parallel_no
-                    {
-                        SingleTobaccoSampleDAO dao;
-                        SampleIdentifier sid = dao.getSampleIdentifierById(sampleId);
-                        QString legendName = QString("%1-%2-%3-%4")
-                                                .arg(sid.projectName)
-                                                .arg(sid.batchCode)
-                                                .arg(sid.shortCode)
-                                                .arg(sid.parallelNo);
-                        curve->setName(legendName);
-                    }
-                    curve->setColor(sampleColorMap.value(sampleId, QColor(200, 30, 30)));
-                    // curve->setName(legendName);
-                    // DEBUG_LOG << "    Adding cleaned curve:" << curve->name();
-
+                    curve->setName(legendName);
+                    curve->setColor(color);
                     m_chartView2->addCurve(curve);
 
-                    // 如开启“叠加显示原始数据”，在基线校正图表中叠加原始曲线
                     if (m_currentParams.baselineOverlayRaw) {
-                        for (const auto &rawStage : sample.stages) {
+                        for (const auto& rawStage : sample.stages) {
                             if (rawStage.stageName == StageName::RawData && rawStage.curve) {
                                 QSharedPointer<Curve> rawCurve = rawStage.curve;
-                                // 悬停名称同样显示统一格式
-                                {
-                                    SingleTobaccoSampleDAO dao;
-                                    SampleIdentifier sid = dao.getSampleIdentifierById(sampleId);
-                                    QString legendName = QString("%1-%2-%3-%4")
-                                                            .arg(sid.projectName)
-                                                            .arg(sid.batchCode)
-                                                            .arg(sid.shortCode)
-                                                            .arg(sid.parallelNo);
-                                    rawCurve->setName(legendName);
-                                }
-                                // 使用同一颜色索引以便视觉对应同一样本
-                                rawCurve->setColor(sampleColorMap.value(sampleId, QColor(200, 30, 30)));
+                                rawCurve->setName(legendName + QStringLiteral(" (原始叠加)"));
+                                rawCurve->setColor(color);
                                 rawCurve->setLineStyle(Qt::DashLine);
                                 m_chartView2->addCurve(rawCurve);
                                 break;
                             }
                         }
                     }
+                } else if (stage.stageName == StageName::Clip) {
+                    QSharedPointer<Curve> curve = stage.curve;
+                    curve->setName(legendName);
+                    curve->setColor(color);
+                    m_chartView3->addCurve(curve);
+                } else if (stage.stageName == StageName::PeakAlignment) {
+                    QSharedPointer<Curve> curve = stage.curve;
+                    curve->setName(legendName);
+                    curve->setColor(color);
+                    m_chartView4->addCurve(curve);
+                }
+            }
 
-                    // 如开启“绘制基线（原点样式）”，根据原始与校正曲线计算并绘制基线
-                    if (m_currentParams.baselineDisplayEnabled) {
-                        QSharedPointer<Curve> rawCurve;
-                        // 查找原始数据阶段曲线
-                        for (const auto &rawStage : sample.stages) {
-                            if (rawStage.stageName == StageName::RawData && rawStage.curve) {
-                                rawCurve = rawStage.curve;
+            if (sample.sampleId == m_currentParams.referenceSampleId) {
+                bool hasAligned = false;
+                for (const auto& stage : sample.stages) {
+                    if (stage.stageName == StageName::PeakAlignment && stage.curve) {
+                        hasAligned = true;
+                        break;
+                    }
+                }
+                if (!hasAligned) {
+                    // 对齐图中的参考曲线优先使用“裁剪数据”，与 MATLAB 流程一致
+                    QSharedPointer<Curve> refCurve;
+                    for (const auto& stage : sample.stages) {
+                        if (stage.stageName == StageName::Clip && stage.curve) {
+                            refCurve = stage.curve;
+                            break;
+                        }
+                    }
+                    // 仅在无裁剪阶段时兜底到基线校正
+                    if (refCurve.isNull()) {
+                        for (const auto& stage : sample.stages) {
+                            if (stage.stageName == StageName::BaselineCorrection && stage.curve) {
+                                refCurve = stage.curve;
                                 break;
                             }
                         }
-                        if (rawCurve && curve) {
-                            const QVector<QPointF>& rawPts = rawCurve->data();
-                            const QVector<QPointF>& corrPts = curve->data();
-                            if (!rawPts.isEmpty() && rawPts.size() == corrPts.size()) {
-                                QVector<QPointF> baselinePts;
-                                baselinePts.reserve(rawPts.size());
-                                for (int i = 0; i < rawPts.size(); ++i) {
-                                    // 假设同索引 x 对齐
-                                    double x = rawPts[i].x();
-                                    double yb = rawPts[i].y() - corrPts[i].y();
-                                    baselinePts.append(QPointF(x, yb));
-                                }
-                                // 构造基线曲线并设置样式与名称（名称包含“基线”用于原点样式渲染）
-                                QSharedPointer<Curve> baselineCurve = QSharedPointer<Curve>::create(baselinePts, curve->name() + " (基线)");
-                                baselineCurve->setSampleId(sampleId);
-                                baselineCurve->setColor(curve->color()); // 基线点颜色与对应样本校正曲线保持一致
-                                m_chartView2->addCurve(baselineCurve);
-                            }
-                        }
                     }
-                    
-                    // DEBUG_LOG << "    Added cleaned curve:" << legendName;
 
-                    DEBUG_LOG << "色谱基线校准数据后绘图每次循环用时clip：" << timer.elapsed() << "ms";
-                    timer.restart();
+                    if (!refCurve.isNull()) {
+                        refCurve->setName(legendName + QStringLiteral(" (参考)"));
+                        // 参考曲线在对齐图中保持与其它图一致的样本颜色
+                        refCurve->setColor(color);
+                        refCurve->setLineWidth(3);
+                        m_chartView4->addCurve(refCurve);
+                    }
                 }
             }
-            // // 叠加绘制峰对齐与峰检测结果（如存在）
-            // for (const auto &stage : sample.stages) {
-            //     if ((stage.stageName == StageName::PeakAlignment || stage.stageName == StageName::PeakDetection) && stage.curve) {
-            //         QSharedPointer<Curve> curve = stage.curve;
-            //         curve->setColor(ColorUtils::setCurveColor(colorIndex++));
-            //         m_chartView2->addCurve(curve);
-            //     }
-            // }
         }
-
-        // DEBUG_LOG << "大热重裁剪数据后绘图每次循环用时：" << timer.elapsed() << "ms";
-    timer.restart();
-
     }
-
-    // DEBUG_LOG << "大热重裁剪数据处理用时：" << timer.elapsed() << "ms";
-    timer.restart();
 
     m_chartView2->setLegendVisible(false);
-
     m_chartView2->replot();
-
-    // --- 3. 更新【基线校正 + 峰标记】图表 (m_chartView3) ---
-    // 仅绘制“基线校正”后的曲线，并根据“峰检测”结果在每个峰位置进行散点标记
-    m_chartView3->clearGraphs();
-    m_chartView3->setLabels(tr("响应时间"), tr("强度"));
-    m_chartView3->setPlotTitle(QStringLiteral("峰标记"));
-    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
-        const SampleGroup &group = groupIt.value();
-        for (const auto &sample : group.sampleDatas) {
-            if (!m_visibleSamples.contains(sample.sampleId)) continue;
-            // 查找当前样本的“基线校正”阶段曲线
-            QSharedPointer<Curve> baselineCurve;
-            for (const auto &stage : sample.stages) {
-                if (stage.stageName == StageName::BaselineCorrection && stage.curve) {
-                    baselineCurve = stage.curve;
-                    break;
-                }
-            }
-            // 绘制基线校正后的曲线
-            if (baselineCurve) {
-                // 统一设置图例名称
-                SingleTobaccoSampleDAO dao;
-                SampleIdentifier sid = dao.getSampleIdentifierById(sample.sampleId);
-                QString legendName = QString("%1-%2-%3-%4")
-                                        .arg(sid.projectName)
-                                        .arg(sid.batchCode)
-                                        .arg(sid.shortCode)
-                                        .arg(sid.parallelNo);
-                baselineCurve->setName(legendName);
-                baselineCurve->setColor(sampleColorMap.value(sample.sampleId, QColor(200, 30, 30)));
-                m_chartView3->addCurve(baselineCurve);
-            }
-            // 根据“峰检测”阶段，在每个峰位置进行散点标记
-            for (const auto &stage : sample.stages) {
-                if (stage.stageName == StageName::PeakDetection && stage.curve) {
-                    const QVector<QPointF>& pts = stage.curve->data();
-                    if (!pts.isEmpty()) {
-                        QVector<double> px, py;
-                        px.reserve(pts.size());
-                        py.reserve(pts.size());
-                        for (const auto& p : pts) { px.append(p.x()); py.append(p.y()); }
-                        // 峰标记颜色与该样本曲线同色（若无基线曲线则回退为红色）
-                        const QColor markerColor = baselineCurve ? baselineCurve->color() : QColor(200, 30, 30);
-                        m_chartView3->addScatterPoints(px, py, QStringLiteral("峰标记"), markerColor, 6);
-                    }
-                }
-            }
-        }
-    }
     m_chartView3->setLegendVisible(false);
     m_chartView3->replot();
+    m_chartView4->setLegendVisible(false);
+    m_chartView4->replot();
 
-    // DEBUG_LOG << "大热重裁剪数据后绘图用时：" << timer.elapsed() << "ms";
-    timer.restart();
 
     // // --- 2. 更新【归一化】图表 (m_chartView3) ---
     // m_chartView3->clearGraphs();
@@ -2429,9 +2444,6 @@ void ChromatographDataProcessDialog::updatePlot()
     // m_chartView5->replot();
 
     // DEBUG_LOG << "大热重微分数据后绘图用时：" << timer.elapsed() << "ms";
-    timer.restart();
-
-
 
     updateLegendPanel();
 }
@@ -2479,111 +2491,65 @@ void ChromatographDataProcessDialog::onParameterChanged()
 
 void ChromatographDataProcessDialog::onItemChanged(QTreeWidgetItem *item, int column)
 {
-    // 当由代码设置复选框时，抑制递归触发
-    if (m_suppressItemChanged) {
-        return;
-    }
-    // 只处理样本节点的复选框变化
-    if (!item || !item->parent() || !item->parent()->parent()) {
-        return; // 不是样本节点
-    }
-    
-    // 获取当前被点击的样本ID和选中状态
-    int clickedSampleId = item->data(0, Qt::UserRole).toInt();
-    bool isChecked = (item->checkState(0) == Qt::Checked);
-    
-    // 本地勾选仅控制本界面绘图显示，不影响主导航
-    QString sampleFullName = item->data(0, Qt::UserRole + 1).toString();
+    Q_UNUSED(column)
+
+    if (m_suppressItemChanged) return;
+    if (!item || !item->parent() || !item->parent()->parent()) return; // 仅样本节点
+
+    const int sampleId = item->data(0, Qt::UserRole).toInt();
+    const bool isChecked = (item->checkState(0) == Qt::Checked);
+    const int oldVisibleCount = m_visibleSamples.size();
+
     if (isChecked) {
-        m_selectedSamples[clickedSampleId] = sampleFullName;
-        loadSampleCurve(clickedSampleId);
-        updateSelectedSamplesList();
+        QString sampleFullName = item->data(0, Qt::UserRole + 1).toString();
+        if (sampleFullName.trimmed().isEmpty()) {
+            sampleFullName = buildSampleDisplayName(sampleId);
+        }
+        m_selectedSamples[sampleId] = sampleFullName;
+        m_visibleSamples.insert(sampleId);
     } else {
-        m_selectedSamples.remove(clickedSampleId);
-        removeSampleCurve(clickedSampleId);
-        updateSelectedSamplesList();
+        m_selectedSamples.remove(sampleId);
+        m_visibleSamples.remove(sampleId);
     }
-    
-    // 获取所有选中的样本
-    QList<QPair<int, QString>> selectedSamples;
-    
-    // 用于统计不同种类样本的数量
-    QMap<QString, int> sampleTypeCount;
-    
-    // 遍历所有项目
-    for (int i = 0; i < m_leftNavigator->topLevelItemCount(); ++i) {
-        QTreeWidgetItem* projectItem = m_leftNavigator->topLevelItem(i);
-        
-        // 遍历项目下的所有批次
-        for (int j = 0; j < projectItem->childCount(); ++j) {
-            QTreeWidgetItem* batchItem = projectItem->child(j);
-            
-            // 遍历批次下的所有样本
-            for (int k = 0; k < batchItem->childCount(); ++k) {
-                QTreeWidgetItem* sampleItem = batchItem->child(k);
-                
-                // 如果样本被选中，添加到列表
-                if (sampleItem->checkState(0) == Qt::Checked) {
-                    int sampleId = sampleItem->data(0, Qt::UserRole).toInt();
-                    QString sampleFullName = sampleItem->data(0, Qt::UserRole + 1).toString();
-                    selectedSamples.append(qMakePair(sampleId, sampleFullName));
-                    
-                    // 提取样本类型并统计
-                    QString sampleType = "色谱"; // 默认为色谱类型
-                    
-                    // 尝试从样本名称中提取更详细的类型信息
-                    if (sampleFullName.contains("大热重")) {
-                        sampleType = "大热重";
-                    } else if (sampleFullName.contains("小热重")) {
-                        sampleType = "小热重";
-                    } else if (sampleFullName.contains("色谱")) {
-                        sampleType = "色谱";
-                    }
-                    
-                    // 增加对应类型的计数
-                    sampleTypeCount[sampleType] = sampleTypeCount.value(sampleType, 0) + 1;
-                }
-            }
+
+    updateSelectedSamplesList();
+
+    const int newVisibleCount = m_visibleSamples.size();
+    if (isChecked && newVisibleCount >= 2 && newVisibleCount > oldVisibleCount) {
+        QList<int> ids = m_visibleSamples.values();
+        std::sort(ids.begin(), ids.end());
+
+        QStringList labels;
+        QMap<QString, int> labelToId;
+        for (int id : ids) {
+            QString name = buildSampleDisplayName(id);
+            if (name.trimmed().isEmpty()) name = QStringLiteral("样本 %1").arg(id);
+            const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
+            labels.append(label);
+            labelToId.insert(label, id);
+        }
+
+        int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
+        if (currentIdx < 0) currentIdx = 0;
+
+        bool ok = false;
+        const QString selected = QInputDialog::getItem(
+            this,
+            tr("选择色谱对齐参考样本"),
+            tr("请在当前可见曲线中选择参考样本："),
+            labels,
+            currentIdx,
+            false,
+            &ok);
+
+        if (ok && !selected.isEmpty()) {
+            const int refId = labelToId.value(selected, -1);
+            if (refId > 0) m_currentParams.referenceSampleId = refId;
         }
     }
-    
-    // 打印统计结果到日志文件
-    INFO_LOG << "\n【样本选择统计】时间: " << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
-    INFO_LOG << "【样本选择统计】操作: " << (isChecked ? "选中" : "取消选中");
-    INFO_LOG << "【样本选择统计】样本ID: " << clickedSampleId;
-    INFO_LOG << "【样本选择统计】=== 详细统计 ===";
-    
-    int totalCount = 0;
-    QStringList statDetails;
-    
-    QMapIterator<QString, int> it(sampleTypeCount);
-    while (it.hasNext()) {
-        it.next();
-        QString typeInfo = QString("%1: %2个").arg(it.key()).arg(it.value());
-        statDetails.append(typeInfo);
-        totalCount += it.value();
-        INFO_LOG << "【样本选择统计】" << it.key() << ": " << it.value() << "个样本";
-    }
-    
-    INFO_LOG << "【样本选择统计】总计: " << totalCount << "个样本被选中";
-    INFO_LOG << "【样本选择统计】日志文件位置: " << QCoreApplication::applicationDirPath() + "/logs/app.log";
-    INFO_LOG << "【样本选择统计】=== 统计结束 ===\n";
-    
-    // 在状态栏显示统计信息
-    if (parentWidget() && parentWidget()->parentWidget()) {
-        QMainWindow* mainWindow = qobject_cast<QMainWindow*>(parentWidget()->parentWidget());
-        if (mainWindow) {
-            QString statusMsg = QString("已选择 %1 个样本 (%2)").arg(totalCount).arg(statDetails.join(", "));
-            mainWindow->statusBar()->showMessage(statusMsg, 5000);
-        }
-    }
-    
-    
-    // 记录当前选中的样本信息
-    INFO_LOG << "【曲线显示】当前选中的样本数量: " << selectedSamples.size();
-    for (const auto& sample : selectedSamples) {
-        INFO_LOG << "【曲线显示】选中样本: ID=" << sample.first << ", 名称=" << sample.second;
-    }
+
+    scheduleRedraw();
+    updateSelectedStatsInfo();
 }
 
 // 在左侧导航树中查找样本节点（通过样本ID），若不存在返回nullptr
@@ -2797,8 +2763,24 @@ void ChromatographDataProcessDialog::onMainNavigatorSampleSelectionChanged(int s
 void ChromatographDataProcessDialog::onStartComparison()
 {
     DEBUG_LOG << "ChromatographDataProcessDialog::onStartComparison";
-    if (m_stageDataCache.isEmpty() || m_selectedSamples.count() < 2) {
-        QMessageBox::warning(this, "提示", "样本数量不足（需要至少2个），无法进行对比。");
+    if (m_stageDataCache.isEmpty()) {
+        QMessageBox::warning(this, "提示", "暂无可用于对比的数据。");
+        return;
+    }
+
+    int comparableCurveCount = 0;
+    for (auto it = m_stageDataCache.constBegin(); it != m_stageDataCache.constEnd(); ++it) {
+        const SampleGroup& group = it.value();
+        for (const SampleDataFlexible& sample : group.sampleDatas) {
+            for (const StageData& stage : sample.stages) {
+                if (stage.useForPlot && !stage.curve.isNull()) {
+                    ++comparableCurveCount;
+                }
+            }
+        }
+    }
+    if (comparableCurveCount < 2) {
+        QMessageBox::warning(this, "提示", "可用于对比的曲线不足（需要至少2条）。");
         return;
     }
 

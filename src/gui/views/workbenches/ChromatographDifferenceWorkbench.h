@@ -43,6 +43,8 @@ private slots:
     void onResultTableRowClicked(const QModelIndex& index);
     // 显示最佳样品差异排序表
     void onShowBestSampleRankingTable();
+    // 任意选择两条曲线并计算差异度
+    void onCompareAnyTwoCurves();
 
 protected:  //  必须是 protected 或 public
     void closeEvent(QCloseEvent* event) override;
@@ -75,6 +77,7 @@ private:
     QTableView* m_tableView = nullptr;
     DifferenceResultModel* m_model = nullptr;
     QPushButton* m_bestSampleRankingButton = nullptr;
+    QPushButton* m_compareAnyTwoCurvesButton = nullptr;
 
     AppInitializer* m_appInitializer = nullptr;
 

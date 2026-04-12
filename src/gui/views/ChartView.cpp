@@ -1,7 +1,10 @@
 #include "ChartView.h"
 #include "Logger.h"
 #include "ColorUtils.h"
+#include "gui/dialogs/WeightedCurveSumDialog.h"
 #include <QMessageBox>
+#include <QMenu>
+#include <QSet>
 #include <algorithm>
     #include <QElapsedTimer>
 // ：图标着色与自定义光标需要的绘图类
@@ -1933,6 +1936,114 @@ void ChartView::exportData()
     if (m_plot && m_plotExporter) {
         m_plotExporter->exportData(m_plot);
     }
+}
+
+bool ChartView::addWeightedSumCurveFromSelected(const QMap<int, double>& inputWeights,
+                                                QString* errorMessage)
+{
+    auto setErr = [&](const QString& msg) {
+        if (errorMessage) *errorMessage = msg;
+    };
+
+    if (!m_plot) {
+        setErr(tr("绘图对象未初始化。"));
+        return false;
+    }
+
+    QList<QPair<int, QPair<QVector<double>, QVector<double>>>> selected = getSelectedCurvesWithSampleIds();
+    if (selected.size() < 2) {
+        setErr(tr("至少需要选择两条曲线。"));
+        return false;
+    }
+
+    // 对选中曲线按输入权重取值（缺失则按0处理）
+    QVector<double> weights;
+    weights.reserve(selected.size());
+    double wSum = 0.0;
+    for (const auto& one : selected) {
+        const int sampleId = one.first;
+        const double w = qBound(0.0, inputWeights.value(sampleId, 0.0), 1.0);
+        weights.push_back(w);
+        wSum += w;
+    }
+
+    if (wSum <= 0.0) {
+        setErr(tr("权重和必须大于 0。"));
+        return false;
+    }
+
+    // 归一化
+    for (double& w : weights) {
+        w /= wSum;
+    }
+
+    // 严格交集：使用第一条曲线的x为基准，其余曲线必须在同索引具有相同x
+    const QVector<double>& baseX = selected[0].second.first;
+    if (baseX.isEmpty()) {
+        setErr(tr("选中曲线数据为空。"));
+        return false;
+    }
+
+    int commonLen = baseX.size();
+    for (int i = 1; i < selected.size(); ++i) {
+        commonLen = qMin(commonLen, selected[i].second.first.size());
+        commonLen = qMin(commonLen, selected[i].second.second.size());
+    }
+    commonLen = qMin(commonLen, selected[0].second.second.size());
+
+    if (commonLen <= 0) {
+        setErr(tr("选中曲线无可计算交集区间。"));
+        return false;
+    }
+
+    QVector<double> outX;
+    QVector<double> outY;
+    outX.reserve(commonLen);
+    outY.reserve(commonLen);
+
+    for (int idx = 0; idx < commonLen; ++idx) {
+        const double x0 = selected[0].second.first[idx];
+        bool allSameX = true;
+        double ySum = 0.0;
+
+        for (int c = 0; c < selected.size(); ++c) {
+            const QVector<double>& cx = selected[c].second.first;
+            const QVector<double>& cy = selected[c].second.second;
+            if (idx >= cx.size() || idx >= cy.size()) {
+                allSameX = false;
+                break;
+            }
+            if (qAbs(cx[idx] - x0) > 1e-9) {
+                allSameX = false;
+                break;
+            }
+            ySum += weights[c] * cy[idx];
+        }
+
+        if (allSameX) {
+            outX.push_back(x0);
+            outY.push_back(ySum);
+        }
+    }
+
+    if (outX.isEmpty()) {
+        setErr(tr("选中曲线无公共X点，无法进行加和。"));
+        return false;
+    }
+
+    QStringList parts;
+    for (int i = 0; i < selected.size(); ++i) {
+        const int sampleId = selected[i].first;
+        parts << QString("%1:%2")
+                     .arg(sampleId)
+                     .arg(QString::number(weights[i], 'f', 3));
+    }
+    const QString curveName = QString("加权和[%1]").arg(parts.join(","));
+
+    // 使用负 sampleId 避免污染样本ID映射
+    addGraph(outX, outY, curveName, QColor(220, 20, 60), -1);
+    replot();
+    return true;
 }
 
 ChartView::~ChartView()

@@ -127,6 +127,8 @@ set(DIALOG_FILES
 list(APPEND DIALOG_FILES
     "${PROJECT_SOURCE_DIR}/gui/dialogs/TwoCurvePickDialog.cpp"
     "${PROJECT_SOURCE_DIR}/gui/dialogs/TwoCurvePickDialog.h"
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/WeightedCurveSumDialog.cpp"
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/WeightedCurveSumDialog.h"
 )
 
 

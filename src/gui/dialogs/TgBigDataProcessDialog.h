@@ -144,6 +144,8 @@ private:
     void scheduleRefreshPlotsFromNavigator(const QString& origin);
     // 仅保留两样本、清空多阶段缓存后在 chart1 上绘制两曲线+加和
     void plotTwoCurvesAndSum(int id1, int id2);
+    // 多曲线（先选曲线，再设权重）加和绘图
+    void plotWeightedCurvesAndSum(const QList<int>& sampleIds, const QVector<double>& weights);
     
     // 参数重置
     void resetParameters();

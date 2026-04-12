@@ -11,6 +11,7 @@
 #include <QVector>
 #include <QCursor>
 #include <QMouseEvent>
+#include <QMap>
 
 #include "core/entities/Curve.h"
 #include "PlotExporter.h"
@@ -89,6 +90,10 @@ public:
     bool exportSelectedDataToXLSX(const QString& filePath) const;
 
     bool exportPlot(const QString& filePath) const;
+
+    // 多曲线加权加和（基于当前选中曲线）
+    bool addWeightedSumCurveFromSelected(const QMap<int, double>& inputWeights,
+                                         QString* errorMessage = nullptr);
     
     // 新增工具功能
     void panMode();
@@ -118,6 +123,7 @@ protected:
 signals:
     void requestAddCurve();
     void requestAddMultipleCurves();
+    void requestWeightedCurveSum();
 
 private:
     QCustomPlot * m_plot = nullptr;

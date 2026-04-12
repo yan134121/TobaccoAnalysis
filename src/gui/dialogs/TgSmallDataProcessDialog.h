@@ -161,6 +161,7 @@ private:
     void refreshPlotsAfterSampleVisibilityChange();
     void scheduleRefreshPlotsFromNavigator(const QString& origin);
     void plotTwoCurvesAndSum(int id1, int id2);
+    void plotWeightedCurvesAndSum(const QList<int>& sampleIds, const QVector<double>& weights);
     
     // 参数重置
     void resetParameters();

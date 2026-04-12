@@ -23,6 +23,7 @@
 #include "core/singletons/SampleSelectionManager.h"  // 引入集中样本选中管理器
 #include "core/CurveMathUtils.h"
 #include "gui/dialogs/TwoCurvePickDialog.h"
+#include "gui/dialogs/WeightedCurveSumDialog.h"
 #include "InfoAutoClose.h"
 #include <QCursor>
 #include <QLabel>
@@ -1264,18 +1265,72 @@ void TgSmallDataProcessDialog::onSumTwoCurvesClicked()
         QMessageBox::warning(this, tr("提示"), tr("当前可见曲线少于 2 条，请在左侧列表中勾选至少两条样本。"));
         return;
     }
+
+    // 第一步：先选参与加和的曲线（可多选）
     QList<int> vis = m_visibleSamples.values();
     std::sort(vis.begin(), vis.end());
-    QList<QPair<int, QString>> items;
+
+    QDialog pickDlg(this);
+    pickDlg.setWindowTitle(tr("选择参与加和的曲线"));
+    QVBoxLayout* v = new QVBoxLayout(&pickDlg);
+    QLabel* tip = new QLabel(tr("请先勾选需要参与加和的曲线（至少 2 条）:"), &pickDlg);
+    v->addWidget(tip);
+
+    QListWidget* list = new QListWidget(&pickDlg);
     for (int id : vis) {
-        items.append(qMakePair(id, buildSampleDisplayName(id)));
+        QListWidgetItem* it = new QListWidgetItem(buildSampleDisplayName(id), list);
+        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+        it->setCheckState(Qt::Unchecked);
+        it->setData(Qt::UserRole, id);
     }
-    int id1 = 0;
-    int id2 = 0;
-    if (!TwoCurvePickDialog::pickTwo(this, items, id1, id2)) {
+    v->addWidget(list);
+
+    QHBoxLayout* hb = new QHBoxLayout();
+    QPushButton* okBtn = new QPushButton(tr("下一步"), &pickDlg);
+    QPushButton* cancelBtn = new QPushButton(tr("取消"), &pickDlg);
+    hb->addStretch();
+    hb->addWidget(okBtn);
+    hb->addWidget(cancelBtn);
+    v->addLayout(hb);
+
+    connect(okBtn, &QPushButton::clicked, [&]() { pickDlg.accept(); });
+    connect(cancelBtn, &QPushButton::clicked, [&]() { pickDlg.reject(); });
+
+    if (pickDlg.exec() != QDialog::Accepted) {
         return;
     }
-    plotTwoCurvesAndSum(id1, id2);
+
+    QList<int> pickedIds;
+    for (int i = 0; i < list->count(); ++i) {
+        QListWidgetItem* it = list->item(i);
+        if (it && it->checkState() == Qt::Checked) {
+            pickedIds.append(it->data(Qt::UserRole).toInt());
+        }
+    }
+
+    if (pickedIds.size() < 2) {
+        QMessageBox::warning(this, tr("提示"), tr("至少选择 2 条曲线。"));
+        return;
+    }
+
+    // 第二步：给选择后的曲线赋权重
+    QList<QPair<QString, double>> items;
+    items.reserve(pickedIds.size());
+    for (int id : pickedIds) {
+        items.append(qMakePair(buildSampleDisplayName(id), 1.0 / static_cast<double>(pickedIds.size())));
+    }
+
+    QVector<double> weights;
+    if (!WeightedCurveSumDialog::pickWeights(this, items, weights)) {
+        return;
+    }
+
+    if (weights.size() != pickedIds.size()) {
+        QMessageBox::warning(this, tr("提示"), tr("权重数量与曲线数量不一致。"));
+        return;
+    }
+
+    plotWeightedCurvesAndSum(pickedIds, weights);
 }
 
 void TgSmallDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
@@ -1406,6 +1461,180 @@ void TgSmallDataProcessDialog::plotTwoCurvesAndSum(int id1, int id2)
     if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
     updateSelectedSamplesList();
     updateSelectedStatsInfo();
+    m_inTwoCurveSwitching = false;
+}
+
+void TgSmallDataProcessDialog::plotWeightedCurvesAndSum(const QList<int>& sampleIds, const QVector<double>& weights)
+{
+    if (sampleIds.size() < 2 || sampleIds.size() != weights.size()) {
+        QMessageBox::warning(this, tr("提示"), tr("加和参数无效。"));
+        return;
+    }
+
+    // 防止在切换样本过程中触发 selectionChangedByType 重入导致崩溃
+    m_inTwoCurveSwitching = true;
+
+    auto getPointsBySampleId = [this](int sampleId) -> QVector<QPointF> {
+        for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+            const SampleGroup &group = groupIt.value();
+            for (const auto &sample : group.sampleDatas) {
+                if (sample.sampleId != sampleId) continue;
+
+                if (m_dataTypeName == QStringLiteral("小热重（原始数据）")) {
+                    for (const StageData &stage : sample.stages) {
+                        if (stage.stageName == StageName::Derivative && stage.curve) {
+                            return stage.curve->data();
+                        }
+                    }
+                }
+
+                for (const StageData &stage : sample.stages) {
+                    if (stage.stageName == StageName::RawData && stage.curve) {
+                        return stage.curve->data();
+                    }
+                }
+                return {};
+            }
+        }
+
+        QString err;
+        return m_navigatorDao.getSampleCurveData(sampleId, m_dataTypeName, err);
+    };
+
+    QVector<QVector<QPointF>> curves;
+    curves.reserve(sampleIds.size());
+    for (int id : sampleIds) {
+        QVector<QPointF> pts = getPointsBySampleId(id);
+        if (pts.isEmpty()) {
+            QMessageBox::warning(this, tr("提示"), tr("样本 %1 曲线数据为空，无法加和。").arg(id));
+            m_inTwoCurveSwitching = false;
+            return;
+        }
+        curves.push_back(pts);
+    }
+
+    double wSum = 0.0;
+    for (double w : weights) wSum += qBound(0.0, w, 1.0);
+    if (wSum <= 0.0) {
+        QMessageBox::warning(this, tr("提示"), tr("权重和必须大于 0。"));
+        m_inTwoCurveSwitching = false;
+        return;
+    }
+
+    QVector<double> normW;
+    normW.reserve(weights.size());
+    for (double w : weights) normW.push_back(qBound(0.0, w, 1.0) / wSum);
+
+    int commonLen = curves[0].size();
+    for (int i = 1; i < curves.size(); ++i) {
+        commonLen = qMin(commonLen, curves[i].size());
+    }
+    if (commonLen <= 0) {
+        QMessageBox::warning(this, tr("提示"), tr("无可计算交集区间。"));
+        m_inTwoCurveSwitching = false;
+        return;
+    }
+
+    QVector<QPointF> sumPts;
+    sumPts.reserve(commonLen);
+    for (int idx = 0; idx < commonLen; ++idx) {
+        const double x0 = curves[0][idx].x();
+        bool allSameX = true;
+        double y = 0.0;
+        for (int c = 0; c < curves.size(); ++c) {
+            if (qAbs(curves[c][idx].x() - x0) > 1e-9) {
+                allSameX = false;
+                break;
+            }
+            y += normW[c] * curves[c][idx].y();
+        }
+        if (allSameX) sumPts.push_back(QPointF(x0, y));
+    }
+
+    if (sumPts.isEmpty()) {
+        QMessageBox::warning(this, tr("提示"), tr("选中曲线无公共X点，无法进行加和。"));
+        m_inTwoCurveSwitching = false;
+        return;
+    }
+
+    m_sumCompareMode = true;
+    if (m_chartView1) m_chartView1->clearGraphs();
+    if (m_chartView2) m_chartView2->clearGraphs();
+    if (m_chartView3) m_chartView3->clearGraphs();
+    if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+
+    m_stageDataCache.clear();
+
+    if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(true);
+    QList<int> keep = sampleIds;
+    QSet<int> keepSet(keep.begin(), keep.end());
+    for (int sid : m_selectedSamples.keys()) {
+        if (!keepSet.contains(sid)) {
+            SampleSelectionManager::instance()->setSelectedWithType(sid, m_dataTypeName, false, QStringLiteral("Dialog-WeightedSum"));
+            m_curveCache.remove(sid);
+            m_legendNameCache.remove(sid);
+        }
+    }
+    m_selectedSamples.clear();
+    m_visibleSamples.clear();
+    for (int sid : sampleIds) {
+        m_selectedSamples[sid] = buildSampleDisplayName(sid);
+        m_visibleSamples.insert(sid);
+    }
+
+    // 绘制原曲线
+    for (int i = 0; i < sampleIds.size(); ++i) {
+        QVector<double> x, y;
+        for (const QPointF& p : curves[i]) {
+            x.push_back(p.x());
+            y.push_back(p.y());
+        }
+        m_chartView1->addGraph(x, y, m_selectedSamples.value(sampleIds[i]), ColorUtils::setCurveColor(i), sampleIds[i]);
+    }
+
+    // 绘制加和曲线
+    QVector<double> sx, sy;
+    sx.reserve(sumPts.size());
+    sy.reserve(sumPts.size());
+    for (const QPointF& p : sumPts) {
+        sx.push_back(p.x());
+        sy.push_back(p.y());
+    }
+    m_chartView1->addGraph(sx, sy, tr("加权加和"), ColorUtils::setCurveColor(sampleIds.size()), -1);
+
+    m_chartView1->setPlotTitle(tr("双曲线加和"));
+    m_chartView1->setLabels(tr(""), tr(""));
+    m_chartView1->setLegendVisible(false);
+    m_chartView1->replot();
+
+    if (m_legendPanel && m_legendLayout) {
+        QLayoutItem* item = nullptr;
+        while ((item = m_legendLayout->takeAt(0)) != nullptr) {
+            delete item->widget();
+            delete item;
+        }
+        for (int i = 0; i < sampleIds.size(); ++i) {
+            auto* label = new QLabel(m_selectedSamples.value(sampleIds[i]));
+            QPalette pal = label->palette();
+            pal.setColor(QPalette::WindowText, ColorUtils::setCurveColor(i));
+            label->setPalette(pal);
+            m_legendLayout->addWidget(label);
+        }
+        auto* sumLabel = new QLabel(tr("加权加和"));
+        QPalette sumPal = sumLabel->palette();
+        sumPal.setColor(QPalette::WindowText, ColorUtils::setCurveColor(sampleIds.size()));
+        sumLabel->setPalette(sumPal);
+        m_legendLayout->addWidget(sumLabel);
+        m_legendLayout->addStretch();
+    }
+
+    if (m_selectedSamplesList) m_selectedSamplesList->blockSignals(false);
+    updateSelectedSamplesList();
+    updateSelectedStatsInfo();
+
+    QMessageBox::information(this, tr("提示"), tr("已完成多曲线加权加和。"));
+
     m_inTwoCurveSwitching = false;
 }
 

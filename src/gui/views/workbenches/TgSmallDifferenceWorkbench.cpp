@@ -170,7 +170,9 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
     printBatchGroupData(m_processedData); // 调试输出整个批量组数据
 
     // 启用裁剪时，差异度计算改用 Clip 阶段；否则使用 RawData。
-    const StageName compareStage = m_processingParams.clippingEnabled ? StageName::Clip : StageName::RawData;
+    // 兼容“小热重（原始数据）”的独立裁剪开关 clippingEnabled_TgSmallRaw。
+    const bool clipEnabledForSmall = m_processingParams.clippingEnabled || m_processingParams.clippingEnabled_TgSmallRaw;
+    const StageName compareStage = clipEnabledForSmall ? StageName::Clip : StageName::RawData;
 
     // 选择各组代表样，仅用于后续比较与绘图（保留参考样本）
     if (m_appInitializer && m_appInitializer->getParallelSampleAnalysisService()) {
@@ -510,7 +512,8 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     // }
 
     // DEBUG_LOG << "m_processedData size:" << m_processedData.size();
-    const StageName compareStage = m_processingParams.clippingEnabled ? StageName::Clip : StageName::RawData;
+    const bool clipEnabledForSmall = m_processingParams.clippingEnabled || m_processingParams.clippingEnabled_TgSmallRaw;
+    const StageName compareStage = clipEnabledForSmall ? StageName::Clip : StageName::RawData;
 
     for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
         const SampleGroup& group = it.value();

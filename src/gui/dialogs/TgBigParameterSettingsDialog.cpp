@@ -59,16 +59,13 @@ void TgBigParameterSettingsDialog::setupUi()
 
     mainLayout->addWidget(m_tabWidget);
 
-    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply, this);
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Apply | QDialogButtonBox::Cancel, this);
     // 修改按钮文本
-    m_buttonBox->button(QDialogButtonBox::Ok)->setText(tr("确认"));
-    m_buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("取消"));
     m_buttonBox->button(QDialogButtonBox::Apply)->setText(tr("应用"));
+    m_buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("取消"));
     mainLayout->addWidget(m_buttonBox);
 
-    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &TgBigParameterSettingsDialog::acceptChanges);
     connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(m_buttonBox->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, &TgBigParameterSettingsDialog::applyChanges);
     connect(m_buttonBox, &QDialogButtonBox::clicked, this, &TgBigParameterSettingsDialog::onButtonClicked);
 
     // // === 信号连接：权重调整时自动校正 ===
@@ -324,27 +321,7 @@ QWidget* TgBigParameterSettingsDialog::createDifferenceTab()
 
     mainLayout->addWidget(euclideanGroup);
 
-    // === 5. ROI 设置 ===
-    QGroupBox* roiGroup = new QGroupBox(tr("对比区域 (ROI) 设置"));
-    QFormLayout* roiLayout = new QFormLayout(roiGroup);
-    
-    m_roiStartSpinBox = new QDoubleSpinBox;
-    m_roiStartSpinBox->setRange(-1.0, 10000.0);
-    m_roiStartSpinBox->setSingleStep(10.0);
-    m_roiStartSpinBox->setSpecialValueText(tr("全范围")); // -1 表示全范围
-    m_roiStartSpinBox->setValue(-1.0);
-    
-    m_roiEndSpinBox = new QDoubleSpinBox;
-    m_roiEndSpinBox->setRange(-1.0, 10000.0);
-    m_roiEndSpinBox->setSingleStep(10.0);
-    m_roiEndSpinBox->setSpecialValueText(tr("全范围")); // -1 表示全范围
-    m_roiEndSpinBox->setValue(-1.0);
-
-    roiLayout->addRow(tr("起始温度/时间:"), m_roiStartSpinBox);
-    roiLayout->addRow(tr("结束温度/时间:"), m_roiEndSpinBox);
-    mainLayout->addWidget(roiGroup);
-
-    // === 6. 权重设置 ===
+    // === 5. 权重设置 ===
     QGroupBox* weightGroup = new QGroupBox(tr("算法权重设置（总和为 1）"));
     QFormLayout* weightLayout = new QFormLayout(weightGroup);
 
@@ -472,7 +449,6 @@ void TgBigParameterSettingsDialog::setParameters(const ProcessingParameters &par
     m_weightEuclidean->setValue(params.weightEuclidean);
     // 当前 ProcessingParameters 未包含 RMSE 权重字段，保持控件显示但不从结构体回填
 
-    // 当前 ProcessingParameters 未包含比较 ROI 字段，保持控件默认值
 
     // 坏点修复
     if (m_outlierEnabledCheck) m_outlierEnabledCheck->setChecked(params.outlierRemovalEnabled);
@@ -536,8 +512,6 @@ ProcessingParameters TgBigParameterSettingsDialog::getParameters() const
     params.weightEuclidean = m_weightEuclidean->value();
     // 当前 ProcessingParameters 未包含 RMSE 权重字段，忽略写回
 
-    // 当前 ProcessingParameters 未包含比较 ROI 字段，忽略写回
-
     // 坏点修复
     if (m_outlierEnabledCheck) params.outlierRemovalEnabled = m_outlierEnabledCheck->isChecked();
     if (m_invalidTokenFraction) params.invalidTokenFraction = m_invalidTokenFraction->value();
@@ -587,34 +561,19 @@ void TgBigParameterSettingsDialog::onButtonClicked(QAbstractButton *button)
 {
     // 获取被点击按钮在 buttonBox 中的角色
     QDialogButtonBox::ButtonRole role = m_buttonBox->buttonRole(button);
-    
-    // a. 首先，进行参数校验
-    if (role == QDialogButtonBox::AcceptRole || role == QDialogButtonBox::ApplyRole) {
+
+    if (role == QDialogButtonBox::ApplyRole) {
+        // 参数校验
         if (m_smoothWindowSpinBox->value() <= m_smoothPolyOrderSpinBox->value()) {
             QMessageBox::warning(this, tr("参数错误"), tr("平滑的窗口大小必须大于多项式阶数。"));
-            return; // 校验失败，中断操作，对话框不关闭
+            return;
         }
-    }
-    
-    // b. 根据按钮角色执行不同操作
-    if (role == QDialogButtonBox::ApplyRole) {
-        // --- Apply 按钮 ---
-        // 1. 发出信号，通知外部世界应用新参数
-        DEBUG_LOG << "Apply button clicked.";
+
+        // --- 应用 按钮（合并原“确认”和“应用”行为）---
         emit parametersApplied(getParameters());
-        DEBUG_LOG << "Apply button clicked.";
-        // 2. 对话框不关闭
-        
-    } else if (role == QDialogButtonBox::AcceptRole) {
-        // --- OK (确定) 按钮 ---
-        // 1. 发出信号，通知外部世界应用新参数
-        emit parametersApplied(getParameters());
-        // 2. 调用 accept() 关闭对话框
         QDialog::accept();
-        
     } else if (role == QDialogButtonBox::RejectRole) {
-        // --- Cancel (取消) 按钮 ---
-        // 直接调用 reject() 关闭对话框，不发出任何信号
+        // --- 取消 按钮 ---
         QDialog::reject();
     }
 }

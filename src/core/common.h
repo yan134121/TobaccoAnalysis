@@ -85,13 +85,13 @@ struct ProcessingParameters {
     double clipMinX = 0.0;
     double clipMaxX = 1000.0;
     // 为“大热重”和“工序大热重”分别提供独立的裁剪参数，便于分别设置
-    bool clippingEnabled_TgBig = false;
+    bool clippingEnabled_TgBig = true;
     double clipMinX_TgBig = 0.0;
     double clipMaxX_TgBig = 1000.0;
     bool clippingEnabled_ProcessTgBig = false;
     double clipMinX_ProcessTgBig = 0.0;
     double clipMaxX_ProcessTgBig = 1000.0;
-    bool clippingEnabled_TgSmallRaw = false;
+    bool clippingEnabled_TgSmallRaw = true;
     double clipMinX_TgSmallRaw = 0.0;
     double clipMaxX_TgSmallRaw = 1000.0;
 

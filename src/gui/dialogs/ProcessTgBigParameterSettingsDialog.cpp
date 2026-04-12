@@ -58,16 +58,13 @@ void ProcessTgBigParameterSettingsDialog::setupUi()
 
     mainLayout->addWidget(m_tabWidget);
 
-    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply, this);
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Apply | QDialogButtonBox::Cancel, this);
     // 修改按钮文本
-    m_buttonBox->button(QDialogButtonBox::Ok)->setText(tr("确认"));
-    m_buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("取消"));
     m_buttonBox->button(QDialogButtonBox::Apply)->setText(tr("应用"));
+    m_buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("取消"));
     mainLayout->addWidget(m_buttonBox);
 
-    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &ProcessTgBigParameterSettingsDialog::acceptChanges);
     connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(m_buttonBox->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, &ProcessTgBigParameterSettingsDialog::applyChanges);
     connect(m_buttonBox, &QDialogButtonBox::clicked, this, &ProcessTgBigParameterSettingsDialog::onButtonClicked);
 
     // // === 信号连接：权重调整时自动校正 ===
@@ -479,35 +476,13 @@ void ProcessTgBigParameterSettingsDialog::onButtonClicked(QAbstractButton *butto
     DEBUG_LOG << "Button clicked.";
     // 获取被点击按钮在 buttonBox 中的角色
     QDialogButtonBox::ButtonRole role = m_buttonBox->buttonRole(button);
-    
-    // a. 首先，进行参数校验
-    if (role == QDialogButtonBox::AcceptRole || role == QDialogButtonBox::ApplyRole) {
-        // if (m_smoothWindowSpinBox->value() <= m_smoothPolyOrderSpinBox->value()) {
-        //     QMessageBox::warning(this, tr("参数错误"), tr("平滑的窗口大小必须大于多项式阶数。"));
-        //     return; // 校验失败，中断操作，对话框不关闭
-        // }
-    }
-    
-    DEBUG_LOG << "Button clicked.";
-    // b. 根据按钮角色执行不同操作
+
     if (role == QDialogButtonBox::ApplyRole) {
-        // --- Apply 按钮 ---
-        // 1. 发出信号，通知外部世界应用新参数
-        DEBUG_LOG << "Apply button clicked.";
+        // --- 应用 按钮（合并原“确认”和“应用”行为）---
         emit parametersApplied(getParameters());
-        DEBUG_LOG << "Apply button clicked.";
-        // 2. 对话框不关闭
-        
-    } else if (role == QDialogButtonBox::AcceptRole) {
-        // --- OK (确定) 按钮 ---
-        // 1. 发出信号，通知外部世界应用新参数
-        emit parametersApplied(getParameters());
-        // 2. 调用 accept() 关闭对话框
         QDialog::accept();
-        
     } else if (role == QDialogButtonBox::RejectRole) {
-        // --- Cancel (取消) 按钮 ---
-        // 直接调用 reject() 关闭对话框，不发出任何信号
+        // --- 取消 按钮 ---
         QDialog::reject();
     }
 }

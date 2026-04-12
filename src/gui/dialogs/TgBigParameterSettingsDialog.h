@@ -109,9 +109,6 @@ private:
     // QCheckBox* m_pearsonAbsCheck = nullptr;
     // QCheckBox* m_euclideanRootCheck = nullptr;
 
-    // ROI 设置
-    QDoubleSpinBox* m_roiStartSpinBox = nullptr;
-    QDoubleSpinBox* m_roiEndSpinBox = nullptr;
 
     // 坏点修复Tab（对齐 Copy_of_V2.2）
     QCheckBox* m_outlierEnabledCheck = nullptr;       // 是否启用坏点修复

@@ -140,6 +140,11 @@ private:
     QMap<int, QCPGraph*> m_sampleGraphs; // 存储样本 ID 和对应的图形对象
     QMap<int, QString>   m_sampleNames;  // 存储样本 ID 与完整显示名称，用于悬停提示
 
+    // X 轴手动范围锁定（用于参数设置里的裁剪区间显示）
+    bool m_hasManualXRange = false;
+    double m_manualXMin = 0.0;
+    double m_manualXMax = 0.0;
+
     // --- 新增：点击点标记与坐标文本 ---
     // 使用 QCPItemTracer 作为曲线上点的标记，使用 QCPItemText 显示坐标
     QCPItemTracer* m_clickTracer = nullptr;   // 点击点的跟踪标记

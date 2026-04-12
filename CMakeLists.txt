@@ -395,8 +395,8 @@ endif()
 # )
 
 
-# 只在 Debug 模式下开启 ASan
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+# 只在 Debug 模式下开启 ASan（MinGW 上默认关闭，避免缺少 libasan 导致链接失败）
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MINGW)
     message(STATUS "Enabling AddressSanitizer")
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=address)

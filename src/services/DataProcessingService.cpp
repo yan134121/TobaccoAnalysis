@@ -630,10 +630,17 @@ SampleDataFlexible DataProcessingService::runTgSmallPipeline(int sampleId, const
             if (!clipStage.curve.isNull()) {
                 clipStage.curve->setSampleId(sampleId);
             }
-            clipStage.algorithm = AlgorithmType::Clip;
-            clipStage.isSegmented = false;
-            clipStage.numSegments = 1;
-            sampleData.stages.append(clipStage);
+
+            // 裁剪结果必须有有效点位才纳入阶段数据，避免前端拿到“空曲线对象”导致不显示。
+            if (!clipStage.curve.isNull() && clipStage.curve->pointCount() > 0) {
+                clipStage.algorithm = AlgorithmType::Clip;
+                clipStage.isSegmented = false;
+                clipStage.numSegments = 1;
+                sampleData.stages.append(clipStage);
+            } else {
+                WARNING_LOG << "TG_SMALL clipping produced empty curve points, sampleId=" << sampleId
+                            << ", min_x=" << params.clipMinX << ", max_x=" << params.clipMaxX;
+            }
         } else {
             WARNING_LOG << "TG_SMALL clipping produced empty result, sampleId=" << sampleId
                         << ", min_x=" << params.clipMinX << ", max_x=" << params.clipMaxX;

@@ -169,10 +169,13 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
 
     printBatchGroupData(m_processedData); // 调试输出整个批量组数据
 
+    // 启用裁剪时，差异度计算改用 Clip 阶段；否则使用 RawData。
+    const StageName compareStage = m_processingParams.clippingEnabled ? StageName::Clip : StageName::RawData;
+
     // 选择各组代表样，仅用于后续比较与绘图（保留参考样本）
     if (m_appInitializer && m_appInitializer->getParallelSampleAnalysisService()) {
         m_appInitializer->getParallelSampleAnalysisService()->selectRepresentativesInBatch(
-            m_processedData, m_processingParams, StageName::RawData);
+            m_processedData, m_processingParams, compareStage);
     }
 
     for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
@@ -182,8 +185,8 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
         for (const SampleDataFlexible& sample : group.sampleDatas) {
             // 仅加入代表样或参考样本
             if (!sample.bestInGroup && sample.sampleId != m_referenceSampleId) continue;
-            // 获取 RawData 阶段曲线
-            QSharedPointer<Curve> curve = getCurveFromStage(sample, StageName::RawData);
+            // 按 compareStage 获取曲线
+            QSharedPointer<Curve> curve = getCurveFromStage(sample, compareStage);
             if (!curve.isNull()) {
                 allDerivativeCurves.append(curve);
                 if (sample.sampleId == m_referenceSampleId) {
@@ -194,7 +197,10 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
     }
 
     if (referenceCurve.isNull()) {
-        QMessageBox::critical(this, tr("错误"), tr("未能找到参考样本的有效微分数据。"));
+        QMessageBox::critical(this, tr("错误"),
+                              m_processingParams.clippingEnabled
+                                  ? tr("未能找到参考样本的有效裁剪数据（请检查裁剪区间是否过窄）。")
+                                  : tr("未能找到参考样本的有效微分数据。"));
         return;
     }
     
@@ -217,49 +223,47 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
         m_tableView->sortByColumn(1, Qt::DescendingOrder);
     }
 
-    // --- 4. 绘制所有微分曲线到图表，并设置详细的图例名称 ---
+    // --- 4. 绘制参与差异度计算的曲线到图表，并设置详细的图例名称 ---
     m_chartView->clearGraphs();
     SingleTobaccoSampleDAO sampleDao; // 创建 DAO 用于查询样本详情
 
-    int colorIndex = 0;
-    // for (QSharedPointer<Curve> curve : allDerivativeCurves) {
-    for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
+    // 缓存当前计算使用的曲线，供后续高亮等逻辑复用
+    m_referenceCurve = referenceCurve;
+    m_allCurves = allDerivativeCurves;
 
+    int colorIndex = 0;
+    for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
         const SampleGroup& group = it.value();
 
-        // 遍历组内每个样本
+        // 仅绘制“参与比较”的样本（代表样 + 参考样），并使用 compareStage 对应曲线
         for (const SampleDataFlexible& sample : group.sampleDatas) {
+            if (!sample.bestInGroup && sample.sampleId != m_referenceSampleId) continue;
 
-        QSharedPointer<Curve> curve = getCurveFromStage(sample, StageName::RawData);
-        // 使用 DAO 获取详细的样本标识符
-        SampleIdentifier sid = sampleDao.getSampleIdentifierById(sample.sampleId);
-        // DEBUG_LOG << " curve->sampleId():"<< it.key().toInt();
-        QString legendName = QString("%1-%2-%3-%4")
-                                .arg(sid.projectName)
-                                .arg(sid.batchCode)
-                                .arg(sid.shortCode)
-                                .arg(sid.parallelNo);
-        DEBUG_LOG << "legendName:legendName " << legendName;
+            QSharedPointer<Curve> curve = getCurveFromStage(sample, compareStage);
+            if (curve.isNull()) continue;
 
-        
-        // DEBUG_LOG << "curve->sampleId():curve->sampleId " << m_processedData.keys();
-        // for (auto id : m_processedData.keys()) {
-        //     DEBUG_LOG << "sampleId:sampleId:" << id ;
-        // }
-        curve->setName(legendName);
+            // 使用 DAO 获取详细的样本标识符
+            SampleIdentifier sid = sampleDao.getSampleIdentifierById(sample.sampleId);
+            QString legendName = QString("%1-%2-%3-%4")
+                                    .arg(sid.projectName)
+                                    .arg(sid.batchCode)
+                                    .arg(sid.shortCode)
+                                    .arg(sid.parallelNo);
+            DEBUG_LOG << "legendName:legendName " << legendName;
 
-        // 设置参考曲线的样式
-        if (curve == referenceCurve) {
-            curve->setColor(Qt::black);
-            curve->setLineWidth(static_cast<int>(2.5));
-        } else {
-            // curve->setColor(QColor::fromHsv(qrand() % 360, 200, 200));
-            QColor curveColor = ColorUtils::setCurveColor(colorIndex++);
-            curve->setColor(curveColor);
+            curve->setName(legendName);
+
+            // 设置参考曲线的样式
+            if (sample.sampleId == m_referenceSampleId) {
+                curve->setColor(Qt::black);
+                curve->setLineWidth(static_cast<int>(2.5));
+            } else {
+                QColor curveColor = ColorUtils::setCurveColor(colorIndex++);
+                curve->setColor(curveColor);
+            }
+
+            m_chartView->addCurve(curve);
         }
-        
-        m_chartView->addCurve(curve);
-    }
     }
     m_chartView->replot();
 }
@@ -506,14 +510,16 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     // }
 
     // DEBUG_LOG << "m_processedData size:" << m_processedData.size();
+    const StageName compareStage = m_processingParams.clippingEnabled ? StageName::Clip : StageName::RawData;
+
     for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
         const SampleGroup& group = it.value();
 
         // 遍历组内样本：只加入代表样或参考样本
         for (const SampleDataFlexible& sample : group.sampleDatas) {
             if (!sample.bestInGroup && sample.sampleId != m_referenceSampleId) continue;
-            // 获取 RawData 阶段曲线
-            QSharedPointer<Curve> curve = getCurveFromStage(sample, StageName::RawData);
+            // 按 compareStage 获取曲线
+            QSharedPointer<Curve> curve = getCurveFromStage(sample, compareStage);
             if (!curve.isNull()) {
                 allCurves.append(curve);
                 if (sample.sampleId == m_referenceSampleId) {

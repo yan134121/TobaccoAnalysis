@@ -2588,25 +2588,54 @@ void TgSmallDataProcessDialog::updatePlot()
             if (!m_chartView1) return;
             m_chartView1->clearGraphs();
             m_chartView1->setLabels(tr(""), tr("重量"));
-            m_chartView1->setPlotTitle(m_dataTypeName == QStringLiteral("小热重（原始数据）")
+
+            const bool isSmallRaw = (m_dataTypeName == QStringLiteral("小热重（原始数据）"));
+            const bool preferClippedForSmall = (!isSmallRaw && m_currentParams.clippingEnabled);
+            m_chartView1->setPlotTitle(isSmallRaw
                                            ? tr("原始数据")
-                                           : tr("原始DTG数据"));
+                                           : (preferClippedForSmall ? tr("裁剪后DTG数据") : tr("原始DTG数据")));
 
             int colorIndex = 0;
             for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
                 const SampleGroup &group = groupIt.value();
                 for (const auto &sample : group.sampleDatas) {
-                    for (const auto &stage : sample.stages) {
-                        if (stage.stageName == StageName::RawData && stage.curve) {
-                            QSharedPointer<Curve> curve = stage.curve;
-                            curve->setColor(ColorUtils::setCurveColor(colorIndex++));
-                            m_chartView1->addCurve(curve);
+                    QSharedPointer<Curve> curveToPlot;
+
+                    // 小热重（非原始数据）开启裁剪后，优先显示 Clip 阶段，确保 x 最小/最大值设置直接体现在首图。
+                    if (preferClippedForSmall) {
+                        for (const auto &stage : sample.stages) {
+                            if (stage.stageName == StageName::Clip && stage.curve && stage.curve->pointCount() > 0) {
+                                curveToPlot = stage.curve;
+                                break;
+                            }
                         }
+                    }
+
+                    // 兜底：仅在未开启裁剪时回退到 RawData。
+                    // 开启裁剪后如果没有 Clip 阶段，说明该参数区间裁剪结果为空，不能再回退到原始数据，
+                    // 否则会出现“设置了 60~400 却显示 400~800”的错觉。
+                    if (!preferClippedForSmall && curveToPlot.isNull()) {
+                        for (const auto &stage : sample.stages) {
+                            if (stage.stageName == StageName::RawData && stage.curve && stage.curve->pointCount() > 0) {
+                                curveToPlot = stage.curve;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!curveToPlot.isNull()) {
+                        curveToPlot->setColor(ColorUtils::setCurveColor(colorIndex++));
+                        m_chartView1->addCurve(curveToPlot);
                     }
                 }
             }
             m_chartView1->setLegendVisible(false);
+            // 小热重（非原始数据）开启裁剪后，强制使用参数范围显示
+            if (preferClippedForSmall) {
+                m_chartView1->setXAxisRange(m_currentParams.clipMinX, m_currentParams.clipMaxX);
+            }
             m_chartView1->replot();
+
         };
 
         if (m_dataTypeName != QStringLiteral("小热重（原始数据）")) {
@@ -2616,6 +2645,12 @@ void TgSmallDataProcessDialog::updatePlot()
             } else {
                 drawSelectedSampleCurves();
             }
+
+            // 兜底保障：即使走到旧绘图逻辑，也强制应用裁剪范围
+            if (m_currentParams.clippingEnabled && m_chartView1) {
+                m_chartView1->setXAxisRange(m_currentParams.clipMinX, m_currentParams.clipMaxX);
+            }
+
             DEBUG_LOG << "已刷新小热重首图原始曲线";
             return;
         }

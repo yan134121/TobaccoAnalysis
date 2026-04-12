@@ -218,15 +218,15 @@ QWidget* TgSmallParameterSettingsDialog::createDifferenceTab()
 void TgSmallParameterSettingsDialog::setParameters(const ProcessingParameters &params)
 {
     // 裁剪
-    // 使用"小热重（原始数据）"独立裁剪参数
+    // 注意：该对话框用于“小热重（非原始数据）”，应读写通用小热重裁剪参数
     if (m_clipEnabledCheck) {
-        m_clipEnabledCheck->setChecked(params.clippingEnabled_TgSmallRaw);
+        m_clipEnabledCheck->setChecked(params.clippingEnabled);
     }
     if (m_clipMinSpinBox) {
-        m_clipMinSpinBox->setValue(params.clipMinX_TgSmallRaw);
+        m_clipMinSpinBox->setValue(params.clipMinX);
     }
     if (m_clipMaxSpinBox) {
-        m_clipMaxSpinBox->setValue(params.clipMaxX_TgSmallRaw);
+        m_clipMaxSpinBox->setValue(params.clipMaxX);
     }
 
     // // 归一化
@@ -255,15 +255,15 @@ ProcessingParameters TgSmallParameterSettingsDialog::getParameters() const
     ProcessingParameters params;
 
     // 从UI控件收集数据并填充结构体
-    // 写入"小热重（原始数据）"独立裁剪参数
+    // 写入小热重通用裁剪参数（非原始数据）
     if (m_clipEnabledCheck) {
-        params.clippingEnabled_TgSmallRaw = m_clipEnabledCheck->isChecked();
+        params.clippingEnabled = m_clipEnabledCheck->isChecked();
     }
     if (m_clipMinSpinBox) {
-        params.clipMinX_TgSmallRaw = m_clipMinSpinBox->value();
+        params.clipMinX = m_clipMinSpinBox->value();
     }
     if (m_clipMaxSpinBox) {
-        params.clipMaxX_TgSmallRaw = m_clipMaxSpinBox->value();
+        params.clipMaxX = m_clipMaxSpinBox->value();
     }
     
     // params.normalizationEnabled = m_normEnabledCheck->isChecked();

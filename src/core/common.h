@@ -80,20 +80,20 @@ struct ProcessingParameters {
     bool showRawOverlay = false;              // 显示原始（预修复）叠加
     bool showBadPoints = false;               // 显示坏点标记
 
-    // 裁剪参数
-    bool clippingEnabled = true;
-    double clipMinX = 60.0;
-    double clipMaxX = 400.0;
+    // 裁剪参数（默认不启用；默认范围 0~1000）
+    bool clippingEnabled = false;
+    double clipMinX = 0.0;
+    double clipMaxX = 1000.0;
     // 为“大热重”和“工序大热重”分别提供独立的裁剪参数，便于分别设置
-    bool clippingEnabled_TgBig = true;
-    double clipMinX_TgBig = 60.0;
-    double clipMaxX_TgBig = 400.0;
-    bool clippingEnabled_ProcessTgBig = true;
-    double clipMinX_ProcessTgBig = 60.0;
-    double clipMaxX_ProcessTgBig = 400.0;
-    bool clippingEnabled_TgSmallRaw = true;
-    double clipMinX_TgSmallRaw = 60.0;
-    double clipMaxX_TgSmallRaw = 400.0;
+    bool clippingEnabled_TgBig = false;
+    double clipMinX_TgBig = 0.0;
+    double clipMaxX_TgBig = 1000.0;
+    bool clippingEnabled_ProcessTgBig = false;
+    double clipMinX_ProcessTgBig = 0.0;
+    double clipMaxX_ProcessTgBig = 1000.0;
+    bool clippingEnabled_TgSmallRaw = false;
+    double clipMinX_TgSmallRaw = 0.0;
+    double clipMaxX_TgSmallRaw = 1000.0;
 
     // 归一化参数
     bool normalizationEnabled = true;

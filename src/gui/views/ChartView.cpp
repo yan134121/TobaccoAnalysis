@@ -546,6 +546,12 @@ void ChartView::clearGraphs()
     m_sampleNames.clear();  // 清除样本ID与显示名称的映射
     // 清理点击标记与坐标文本，避免悬挂
     clearClickMarker();
+
+    // 清空曲线时重置手动X范围锁，避免影响后续非裁剪场景
+    m_hasManualXRange = false;
+    m_manualXMin = 0.0;
+    m_manualXMax = 0.0;
+
     m_plot->replot();
     
     DEBUG_LOG << "ChartView::clearGraphs - All graphs cleared";
@@ -742,6 +748,11 @@ void ChartView::setXAxisRange(double minX, double maxX)
     if (!m_plot) return;
     if (minX >= maxX) return;
 
+    // 记录手动X范围，后续replot时保持该范围不被rescaleAxes覆盖
+    m_hasManualXRange = true;
+    m_manualXMin = minX;
+    m_manualXMax = maxX;
+
     m_plot->xAxis->setRange(minX, maxX);
     // 仅按当前可见 x 范围重算 y，确保“按参数范围显示”时图像始终可见
     m_plot->yAxis->rescale(true);
@@ -866,8 +877,18 @@ void ChartView::replot()
     }
     
     // 确保坐标轴范围正确设置
-    // m_plot->rescaleAxes(true); // true 参数表示只扩展范围，不缩小范围
-    m_plot->rescaleAxes(false); // 或者直接 rescaleAxes()，不要 onlyEnlarge=true
+    // 若存在手动X范围锁（例如来自参数设置里的裁剪区间），则保持X范围，仅重算Y范围；
+    // 否则按默认逻辑自动缩放XY。
+    if (m_hasManualXRange && m_manualXMin < m_manualXMax) {
+        // 手动X范围锁定：绝不执行会改写X范围的rescaleAxes。
+        // 先锁X，再仅按当前可见X范围重算Y。
+        m_plot->xAxis->setRange(m_manualXMin, m_manualXMax);
+        m_plot->yAxis->rescale(true);
+        m_plot->xAxis->setRange(m_manualXMin, m_manualXMax);
+    } else {
+        // m_plot->rescaleAxes(true); // true 参数表示只扩展范围，不缩小范围
+        m_plot->rescaleAxes(false); // 或者直接 rescaleAxes()，不要 onlyEnlarge=true
+    }
     
     // 获取并输出当前坐标轴范围
     QCPRange xRange = m_plot->xAxis->range();

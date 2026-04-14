@@ -12,6 +12,7 @@
 #include <QCursor>
 #include <QMouseEvent>
 #include <QMap>
+#include <QPointer>
 
 #include "core/entities/Curve.h"
 #include "PlotExporter.h"
@@ -99,6 +100,7 @@ public:
     void panMode();
     void exportImage();
     void exportData();
+    void openInSeparateWindow();
 public slots:
     void setToolMode(const QString& toolId);
     void zoomIn();
@@ -177,6 +179,7 @@ private:
     QToolButton* m_panBtn = nullptr;          // 拖动
     QToolButton* m_exportImageBtn = nullptr;  // 导出图像
     QToolButton* m_exportDataBtn = nullptr;   // 导出数据
+    QToolButton* m_openWindowBtn = nullptr;   // 新窗口打开
 
     // --- 新增：辅助方法 ---
     // 根据被点击的图形与数据索引，更新标记位置与坐标文本
@@ -209,7 +212,9 @@ private:
 
     // 根据 sampleId 为曲线应用可区分的样式（线型/点型/宽度）
     void applyDistinctStyle(QCPGraph* graph, int sampleId, const QColor& baseColor);
-    
+    void clonePlotTo(ChartView* target) const;
+
+    QVector<QPointer<QWidget>> m_detachedWindows;
 };
 
 #endif // CHARTVIEW_H

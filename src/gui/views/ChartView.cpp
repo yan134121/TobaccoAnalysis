@@ -15,6 +15,7 @@
 #include <QMouseEvent>
 #include <QRubberBand>
 #include <QSignalBlocker> // 阻断按钮信号，避免程序化勾选触发切换事件
+#include <QMainWindow>
 
 ChartView::ChartView(QWidget *parent) : QWidget(parent)
 {
@@ -132,6 +133,7 @@ m_resetZoomBtn = createButton(":/icons/reset.png", tr("重置"));
 m_panBtn = createButton(":/icons/drag.png", tr("拖动"));
 m_exportImageBtn = createButton(":/icons/export_image.png", tr("导出图像"));
 m_exportDataBtn = createButton(":/icons/export_data.png", tr("导出数据"));
+m_openWindowBtn = createButton(":/icons/zoom-in.png", tr("放大到独立窗口"));
 // ：选择工具按钮（点击后进入箭头光标与矩形框模式）
 m_selectToolBtn = createButton(":/icons/tool-select.png", tr("选择工具"));
 m_selectToolBtn->setCheckable(true);
@@ -167,6 +169,7 @@ toolBarLayout->addWidget(m_resetZoomBtn);
 toolBarLayout->addWidget(m_panBtn);
 toolBarLayout->addWidget(m_selectToolBtn); // 将选择工具按钮加入工具栏
 toolBarLayout->addWidget(m_markPointBtn); // 将标记模式按钮加入工具栏
+toolBarLayout->addWidget(m_openWindowBtn); // 放大到独立窗口
 
 // 添加分隔线
 QFrame* separator = new QFrame();
@@ -209,6 +212,7 @@ connect(m_panBtn, &QToolButton::toggled, this, [this](bool checked){
 });
 connect(m_exportImageBtn, &QToolButton::clicked, this, &ChartView::exportImage);
 connect(m_exportDataBtn, &QToolButton::clicked, this, &ChartView::exportData);
+connect(m_openWindowBtn, &QToolButton::clicked, this, &ChartView::openInSeparateWindow);
 // ：选择工具切换逻辑
 // 选择工具点击即选中，不支持再次点击取消；同时自动取消其他模式并恢复其图标与背景
 connect(m_selectToolBtn, &QToolButton::clicked, this, [this]() {
@@ -1936,6 +1940,70 @@ void ChartView::exportData()
     if (m_plot && m_plotExporter) {
         m_plotExporter->exportData(m_plot);
     }
+}
+
+void ChartView::clonePlotTo(ChartView* target) const
+{
+    if (!target || !m_plot) return;
+
+    target->clearGraphs();
+    target->setLabels(m_plot->xAxis->label(), m_plot->yAxis->label());
+    target->setLegendVisible(m_plot->legend->visible());
+
+    if (m_titleElement) {
+        target->setPlotTitle(m_titleElement->text());
+    }
+
+    for (int i = 0; i < m_plot->graphCount(); ++i) {
+        QCPGraph* srcGraph = m_plot->graph(i);
+        if (!srcGraph || !srcGraph->data()) continue;
+
+        QVector<double> x;
+        QVector<double> y;
+        x.reserve(srcGraph->data()->size());
+        y.reserve(srcGraph->data()->size());
+
+        for (auto it = srcGraph->data()->constBegin(); it != srcGraph->data()->constEnd(); ++it) {
+            x.append(it->key);
+            y.append(it->value);
+        }
+
+        target->addGraph(x, y, srcGraph->name(), srcGraph->pen().color(), -1);
+
+        QCPGraph* dstGraph = nullptr;
+        if (target->m_plot && target->m_plot->graphCount() > 0) {
+            dstGraph = target->m_plot->graph(target->m_plot->graphCount() - 1);
+        }
+        if (!dstGraph) continue;
+
+        dstGraph->setPen(srcGraph->pen());
+        dstGraph->setLineStyle(srcGraph->lineStyle());
+        dstGraph->setScatterStyle(srcGraph->scatterStyle());
+        dstGraph->setVisible(srcGraph->visible());
+    }
+
+    target->m_plot->xAxis->setRange(m_plot->xAxis->range());
+    target->m_plot->yAxis->setRange(m_plot->yAxis->range());
+    target->m_hasManualXRange = m_hasManualXRange;
+    target->m_manualXMin = m_manualXMin;
+    target->m_manualXMax = m_manualXMax;
+    target->m_plot->replot();
+}
+
+void ChartView::openInSeparateWindow()
+{
+    QMainWindow* window = new QMainWindow();
+    window->setAttribute(Qt::WA_DeleteOnClose, true);
+    window->setWindowTitle(tr("图表放大视图"));
+    window->resize(1200, 800);
+
+    ChartView* detachedChart = new ChartView(window);
+    window->setCentralWidget(detachedChart);
+
+    clonePlotTo(detachedChart);
+
+    m_detachedWindows.append(window);
+    window->show();
 }
 
 bool ChartView::addWeightedSumCurveFromSelected(const QMap<int, double>& inputWeights,

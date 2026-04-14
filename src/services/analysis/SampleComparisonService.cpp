@@ -125,21 +125,40 @@ QList<DifferenceResultRow> SampleComparisonService::calculateRankingFromCurves(
     DEBUG_LOG << "sampleId ==" << result.sampleId;
     result.sampleName = compCurve->name();
 
+    bool hasInvalidScore = false;
+
     for (const QString& algId : m_registeredStrategies.keys()) {
         IDifferenceStrategy* strategy = m_registeredStrategies.value(algId);
         double score;
+
         if (compCurve == referenceCurve) {
-            // 自比：RMSE/欧氏应为 0；其余策略保持 1.0 以兼容原逻辑
-            if (algId == QStringLiteral("plain_rmse")) {
-                score = 0.0;
-            } else {
+            // 自比：距离类为0，相关性为1
+            if (algId == QStringLiteral("pearson")) {
                 score = 1.0;
+            } else {
+                score = 0.0; // plain_rmse / nrmse / euclidean
             }
         } else {
             score = strategy->calculateDifference(*referenceCurve, *compCurve, {});
         }
+
+        // 保护：过滤算法错误返回值与非有限值，避免污染排名
+        if (!qIsFinite(score) || score < 0.0) {
+            WARNING_LOG << "Invalid score detected, skip sample in ranking."
+                        << " sampleId=" << result.sampleId
+                        << " algId=" << algId
+                        << " score=" << score;
+            hasInvalidScore = true;
+            break;
+        }
+
         result.scores[algId] = score;
     }
+
+    if (hasInvalidScore) {
+        continue;
+    }
+
     finalResults.append(result);
 }
 

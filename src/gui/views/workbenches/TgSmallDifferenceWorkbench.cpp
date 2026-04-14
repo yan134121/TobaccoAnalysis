@@ -23,6 +23,7 @@
 #include <QDialog>
 #include <QApplication>
 #include <QDesktopWidget>
+#include <QtMath>
 #include "gui/delegates/WidthAwareNumberDelegate.h"
 
 class MainWindow; // 前向声明，不包含头文件
@@ -61,6 +62,7 @@ void TgSmallDifferenceWorkbench::setupUi()
     m_chartView = new ChartView;
     m_tableView = new QTableView;
     m_model = new DifferenceResultModel(m_appInitializer, this);
+    m_model->setReferenceSampleId(m_referenceSampleId);
 
     m_tableView->setModel(m_model);
     m_tableView->horizontalHeader()->setStretchLastSection(true);
@@ -222,11 +224,8 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
     m_resultCache = comparer->calculateRankingFromCurves(referenceCurve, allComparisonCurves);
 
     // --- 3. 填充结果表格 ---
+    // 模型内部已按排名规则排序（优先级高在前），这里不再额外按列重排
     m_model->populate(m_resultCache);
-    if (m_model->columnCount() > 1) {
-        // m_tableView->sortByColumn(1, Qt::AscendingOrder);
-        m_tableView->sortByColumn(1, Qt::DescendingOrder);
-    }
 
     // --- 4. 绘制参与差异度计算的曲线到图表，并设置详细的图例名称 ---
     m_chartView->clearGraphs();
@@ -481,13 +480,6 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     // 获取参考曲线
     QSharedPointer<Curve> referenceCurve;
     QList<QSharedPointer<Curve>> allCurves;
-    // auto getCurveFromStage = [](const MultiStageData& stages, const QString& stage) -> QSharedPointer<Curve> {
-    //     if (stage == "derivative") return stages.derivative;
-    //     if (stage == "smoothed") return stages.smoothed;
-    //     if (stage == "normalized") return stages.normalized;
-    //     if (stage == "raw") return stages.original;
-    //     return nullptr;
-    // };
 
     auto getCurveFromStage = [](const SampleDataFlexible& sample, StageName stage) -> QSharedPointer<Curve> {
         for (const StageData& s : sample.stages) {
@@ -498,36 +490,14 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
         return nullptr;
     };
 
-    // for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
-    //     // 将 SampleGroup 转换为 MultiStageData
-    //     MultiStageData stageData;
-    //     stageData.derivative = it.value().derivative;
-    //     stageData.smoothed = it.value().smoothed;
-    //     stageData.original = it.value().original;
-    //     stageData.normalized = it.value().normalized;
-        
-    //     QSharedPointer<Curve> derivativeCurve = getCurveFromStage(stageData, "derivative");
-    //     if (!derivativeCurve.isNull()) {
-    //         allCurves.append(derivativeCurve);
-    //         if (it.key().toInt() == m_referenceSampleId)
-    //             referenceCurve = derivativeCurve;
-    //     }
-    // }
-
-    // DEBUG_LOG << "m_processedData size:" << m_processedData.size();
-    // 区分数据类型：
-    // - 小热重：使用原始数据（RawData）
-    // - 小热重（原始数据）：使用微分数据（Derivative）
     const bool isSmallRawType = (m_dataTypeName == QStringLiteral("小热重（原始数据）"));
     const StageName compareStage = isSmallRawType ? StageName::Derivative : StageName::RawData;
 
     for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
         const SampleGroup& group = it.value();
 
-        // 遍历组内样本：只加入代表样或参考样本
         for (const SampleDataFlexible& sample : group.sampleDatas) {
             if (!sample.bestInGroup && sample.sampleId != m_referenceSampleId) continue;
-            // 按 compareStage 获取曲线
             QSharedPointer<Curve> curve = getCurveFromStage(sample, compareStage);
             if (!curve.isNull()) {
                 allCurves.append(curve);
@@ -572,10 +542,13 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
         double pearsonRaw = comparer->calculatePearsonCorrelation(referenceCurve, curve);
         double euclideanRaw = comparer->calculateEuclideanDistance(referenceCurve, curve);
 
-        rmseMax = qMax(rmseMax, rmseRaw);
-        euclideanMax = qMax(euclideanMax, euclideanRaw);
-        pearsonMin = qMin(pearsonMin, pearsonRaw);
-        pearsonMax = qMax(pearsonMax, pearsonRaw);
+        // 归一化区间仅基于“非基准样本”统计
+        if (sampleId != m_referenceSampleId) {
+            rmseMax = qMax(rmseMax, rmseRaw);
+            euclideanMax = qMax(euclideanMax, euclideanRaw);
+            pearsonMin = qMin(pearsonMin, pearsonRaw);
+            pearsonMax = qMax(pearsonMax, pearsonRaw);
+        }
 
         diffResults.append({sampleId, samplePrefix, rmsePlain, rmseRaw, pearsonRaw, euclideanRaw});
     }
@@ -589,11 +562,24 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     QList<QMap<QString, QVariant>> resultData;
 
     for (const auto& res : diffResults) {
-        double rmseNormalized = (rmseMax > 0) ? (1.0 - (res.rmseRaw / rmseMax)) : 0.0;
-        double euclideanNormalized = (euclideanMax > 0) ? (1.0 - (res.euclideanRaw / euclideanMax)) : 0.0;
-        double pearsonNormalized = (pearsonMax - pearsonMin > 1e-12)
-                                   ? ((res.pearsonRaw - pearsonMin) / (pearsonMax - pearsonMin))
-                                   : 0.0;
+        const bool isReferenceSample = (res.sampleId == m_referenceSampleId);
+
+        double rmseNormalized = 0.0;
+        double euclideanNormalized = 0.0;
+        double pearsonNormalized = 0.0;
+
+        if (isReferenceSample) {
+            // 基准样本使用固定可解释值
+            rmseNormalized = 1.0;
+            euclideanNormalized = 1.0;
+            pearsonNormalized = 1.0;
+        } else {
+            rmseNormalized = (rmseMax > 0) ? (1.0 - (res.rmseRaw / rmseMax)) : 0.0;
+            euclideanNormalized = (euclideanMax > 0) ? (1.0 - (res.euclideanRaw / euclideanMax)) : 0.0;
+            pearsonNormalized = (pearsonMax - pearsonMin > 1e-12)
+                                ? ((res.pearsonRaw - pearsonMin) / (pearsonMax - pearsonMin))
+                                : 0.0;
+        }
 
         QMap<QString, double> scores;
         scores["rmse_raw"] = res.rmseRaw;
@@ -626,8 +612,15 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
                   return a["score_value"].toDouble() > b["score_value"].toDouble();
               });
 
+    int nonReferenceRank = 1;
     for (int i = 0; i < resultData.size(); ++i) {
-        resultData[i]["rank"] = i + 1;
+        const int sampleId = resultData[i]["sample_id"].toInt();
+        if (sampleId == m_referenceSampleId) {
+            resultData[i]["rank"] = QStringLiteral("基准样本");
+        } else {
+            resultData[i]["rank"] = QString::number(nonReferenceRank++);
+        }
+
         double pearsonRaw = resultData[i]["pearson_raw"].toString().toDouble();
         double pearsonNormalized = resultData[i]["pearson_normalized"].toString().toDouble();
         bool isOptimal = (pearsonRaw >= TG_SMALL_OPTIMAL_PEARSON_RAW_THRESHOLD
@@ -647,7 +640,7 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
         tableWidget->setItem(i, 6, new QTableWidgetItem(resultData[i]["pearson_normalized"].toString()));
         tableWidget->setItem(i, 7, new QTableWidgetItem(resultData[i]["euclidean_raw"].toString()));
         tableWidget->setItem(i, 8, new QTableWidgetItem(resultData[i]["euclidean_normalized"].toString()));
-        tableWidget->setItem(i, 9, new QTableWidgetItem(QString::number(resultData[i]["rank"].toInt())));
+        tableWidget->setItem(i, 9, new QTableWidgetItem(resultData[i]["rank"].toString()));
         tableWidget->setItem(i, 10, new QTableWidgetItem(resultData[i]["is_optimal"].toBool() ? "是" : "否"));
 
         if (resultData[i]["is_optimal"].toBool()) {

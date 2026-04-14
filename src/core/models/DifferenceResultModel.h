@@ -59,6 +59,11 @@ public:
     void populate(const QList<DifferenceResultRow>& results);
 
     /**
+     * @brief 设置参考样本ID（用于排名列显示“基准样本”）。
+     */
+    void setReferenceSampleId(int sampleId);
+
+    /**
      * @brief 根据行号获取对应的样本ID。
      * @param row 行号。
      * @return 样本ID，如果行号无效则返回-1。
@@ -70,6 +75,7 @@ private:
     // 用于按列索引算法ID，以保证列的顺序在刷新和排序时是稳定的
     QStringList m_algorithmIds; 
     AppInitializer* m_appInit;  // 保存指针
+    int m_referenceSampleId = -1;
 };
 
 #endif // DIFFERENCERESULTMODEL_H

@@ -2072,11 +2072,20 @@ void MainWindow::onCreateTgSmallDifferenceWorkbench(int referenceSampleId,
     }
 
     // --- 2. 创建新的 TgBigDifferenceWorkbench ---
+    QString dataTypeName = QStringLiteral("小热重");
+    if (auto* senderDialog = qobject_cast<TgSmallDataProcessDialog*>(sender())) {
+        dataTypeName = senderDialog->property("dataTypeName").toString();
+        if (dataTypeName.isEmpty()) {
+            dataTypeName = QStringLiteral("小热重");
+        }
+    }
+
     m_tgSmallDifferenceWorkbench = new TgSmallDifferenceWorkbench(
         referenceSampleId,        // 参考曲线
         allProcessedData,             // 所有对比曲线
         m_appInitializer,      // AppInitializer
         params,                // 处理参数（包含权重）
+        dataTypeName,
         this
     );
     {

@@ -34,12 +34,14 @@ TgSmallDifferenceWorkbench::TgSmallDifferenceWorkbench(int referenceSampleId,
                                  const BatchGroupData& allProcessedData,
                                          AppInitializer* appInit,
                                          const ProcessingParameters& params,
+                                         const QString& dataTypeName,
                                          QWidget* parent)
     : QMdiSubWindow(parent),
       m_referenceSampleId(referenceSampleId),
       m_processedData(allProcessedData),
       m_appInitializer(appInit),
-      m_processingParams(params)
+      m_processingParams(params),
+      m_dataTypeName(dataTypeName)
       {
     setupUi();              //  先初始化界面
     calculateAndDisplay();  //  再填充数据
@@ -129,9 +131,9 @@ void TgSmallDifferenceWorkbench::setupUi()
 // ===================================================================
 void TgSmallDifferenceWorkbench::calculateAndDisplay()
 {
-    // --- 1. 从传入的 m_processedData 中提取出用于计算的“微分”曲线 ---
+    // --- 1. 从传入的 m_processedData 中提取出用于计算的对比曲线（小热重：原始数据即微分结果）---
     QSharedPointer<Curve> referenceCurve;
-    QList<QSharedPointer<Curve>> allDerivativeCurves;
+    QList<QSharedPointer<Curve>> allComparisonCurves;
     
     // // 辅助函数 (可以放在 .cpp 顶部或一个工具类中)
     // auto getCurveFromStage = [](const MultiStageData& stages, const QString& stage) -> QSharedPointer<Curve> {
@@ -169,10 +171,11 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
 
     printBatchGroupData(m_processedData); // 调试输出整个批量组数据
 
-    // 启用裁剪时，差异度计算改用 Clip 阶段；否则使用 RawData。
-    // 兼容“小热重（原始数据）”的独立裁剪开关 clippingEnabled_TgSmallRaw。
-    const bool clipEnabledForSmall = m_processingParams.clippingEnabled || m_processingParams.clippingEnabled_TgSmallRaw;
-    const StageName compareStage = clipEnabledForSmall ? StageName::Clip : StageName::RawData;
+    // 区分数据类型：
+    // - 小热重：使用原始数据（RawData）
+    // - 小热重（原始数据）：使用微分数据（Derivative）
+    const bool isSmallRawType = (m_dataTypeName == QStringLiteral("小热重（原始数据）"));
+    const StageName compareStage = isSmallRawType ? StageName::Derivative : StageName::RawData;
 
     // 选择各组代表样，仅用于后续比较与绘图（保留参考样本）
     if (m_appInitializer && m_appInitializer->getParallelSampleAnalysisService()) {
@@ -190,7 +193,7 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
             // 按 compareStage 获取曲线
             QSharedPointer<Curve> curve = getCurveFromStage(sample, compareStage);
             if (!curve.isNull()) {
-                allDerivativeCurves.append(curve);
+                allComparisonCurves.append(curve);
                 if (sample.sampleId == m_referenceSampleId) {
                     referenceCurve = curve;
                 }
@@ -200,13 +203,13 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
 
     if (referenceCurve.isNull()) {
         QMessageBox::critical(this, tr("错误"),
-                              m_processingParams.clippingEnabled
-                                  ? tr("未能找到参考样本的有效裁剪数据（请检查裁剪区间是否过窄）。")
-                                  : tr("未能找到参考样本的有效微分数据。"));
+                              isSmallRawType
+                                  ? tr("未能找到参考样本的有效微分数据。")
+                                  : tr("未能找到参考样本的有效原始数据。"));
         return;
     }
     
-    setWindowTitle(tr("小热重差异度分析 - 参考样本ID: %1").arg(m_referenceSampleId));
+    setWindowTitle(tr("%1差异度分析 - 参考样本ID: %2").arg(m_dataTypeName).arg(m_referenceSampleId));
 
     // --- 2. 调用 Service 进行差异度计算 ---
     if (!m_appInitializer || !m_appInitializer->getSampleComparisonService()) {
@@ -216,7 +219,7 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
     SampleComparisonService* comparer = m_appInitializer->getSampleComparisonService();
     
     // 这个调用是同步的，因为所有数据都已在内存中
-    m_resultCache = comparer->calculateRankingFromCurves(referenceCurve, allDerivativeCurves);
+    m_resultCache = comparer->calculateRankingFromCurves(referenceCurve, allComparisonCurves);
 
     // --- 3. 填充结果表格 ---
     m_model->populate(m_resultCache);
@@ -231,7 +234,7 @@ void TgSmallDifferenceWorkbench::calculateAndDisplay()
 
     // 缓存当前计算使用的曲线，供后续高亮等逻辑复用
     m_referenceCurve = referenceCurve;
-    m_allCurves = allDerivativeCurves;
+    m_allCurves = allComparisonCurves;
 
     int colorIndex = 0;
     for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
@@ -512,8 +515,11 @@ void TgSmallDifferenceWorkbench::onShowBestSampleRankingTable()
     // }
 
     // DEBUG_LOG << "m_processedData size:" << m_processedData.size();
-    const bool clipEnabledForSmall = m_processingParams.clippingEnabled || m_processingParams.clippingEnabled_TgSmallRaw;
-    const StageName compareStage = clipEnabledForSmall ? StageName::Clip : StageName::RawData;
+    // 区分数据类型：
+    // - 小热重：使用原始数据（RawData）
+    // - 小热重（原始数据）：使用微分数据（Derivative）
+    const bool isSmallRawType = (m_dataTypeName == QStringLiteral("小热重（原始数据）"));
+    const StageName compareStage = isSmallRawType ? StageName::Derivative : StageName::RawData;
 
     for (auto it = m_processedData.constBegin(); it != m_processedData.constEnd(); ++it) {
         const SampleGroup& group = it.value();

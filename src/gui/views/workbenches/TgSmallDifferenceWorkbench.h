@@ -28,6 +28,7 @@ public:
                                  const BatchGroupData& allProcessedData,
                                  AppInitializer* appInit,
                                  const ProcessingParameters& params,
+                                 const QString& dataTypeName = QStringLiteral("小热重"),
                                  QWidget* parent = nullptr);
     // TgSmallDifferenceWorkbench(QSharedPointer<Curve> referenceCurve,
     //                     const QList<QSharedPointer<Curve>>& allCurves,
@@ -79,6 +80,7 @@ private:
     AppInitializer* m_appInitializer = nullptr;
 
     ProcessingParameters m_processingParams;
+    QString m_dataTypeName;
 };
 
 #endif // TGSMALLDIFFERENCEWORKBENCH_H

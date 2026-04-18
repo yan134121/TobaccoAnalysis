@@ -102,3 +102,6 @@ void ProcessTgBigData::setCreatedAt(const QDateTime& newCreatedAt)
 {
     m_createdAt = newCreatedAt;
 }
+
+QJsonObject ProcessTgBigData::getImportAttributes() const { return m_importAttributes; }
+void ProcessTgBigData::setImportAttributes(const QJsonObject& attrs) { m_importAttributes = attrs; }

@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QDateTime>
+#include <QJsonObject>
 
 class TgSmallData
 {
@@ -64,6 +65,9 @@ public:
     void setDtgValue(double newDtgValue);
     void setSourceName(const QString& newSourceName);
 
+    QJsonObject getImportAttributes() const;
+    void setImportAttributes(const QJsonObject& attrs);
+
 private:
     int m_id;
     // int m_sampleId;
@@ -79,6 +83,7 @@ private:
     double m_tgValue;      // tg_value
     double m_dtgValue;     // dtg_value
     QString m_sourceName;  // source_filename
+    QJsonObject m_importAttributes; // import_attributes
     QDateTime m_createdAt;
 };
 

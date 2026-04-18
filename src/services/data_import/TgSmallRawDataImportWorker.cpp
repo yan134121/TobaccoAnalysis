@@ -18,6 +18,7 @@
 #include <QRegularExpression>
 #include <QApplication>
 #include <QFileInfo>
+#include <QJsonObject>
 
 TgSmallRawDataImportWorker::TgSmallRawDataImportWorker(QObject* parent)
     : QThread(parent)
@@ -88,6 +89,12 @@ void TgSmallRawDataImportWorker::stop()
     m_stopped = true;
 }
 
+void TgSmallRawDataImportWorker::setImportAttributes(const QJsonObject& attrs)
+{
+    QMutexLocker locker(&m_mutex);
+    m_importAttributes = attrs;
+}
+
 bool TgSmallRawDataImportWorker::initThreadDatabase()
 {
     if (QSqlDatabase::contains("tgsmall_raw_thread_connection")) {
@@ -108,6 +115,7 @@ bool TgSmallRawDataImportWorker::initThreadDatabase()
             emit importError("无法打开线程数据库连接: " + m_threadDb.lastError().text());
             return false;
         }
+        { QSqlQuery q(m_threadDb); q.exec("SET NAMES utf8mb4"); }
 
         DEBUG_LOG << "子线程数据库连接信息:";
         DEBUG_LOG << "  连接名称:" << m_threadDb.connectionName();
@@ -257,17 +265,29 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
 
 void TgSmallRawDataImportWorker::run()
 {
-    QMutexLocker locker(&m_mutex);
-    QString filePath = m_filePath;
-    QString projectName = m_projectName;
-    QString batchCode = m_batchCode;
-    int parallelNo = m_parallelNo;
-    bool useCustomColumns = m_useCustomColumns;
-    int xColumn1BasedOr0 = m_xColumn1BasedOr0;
-    int yColumn1Based = m_yColumn1Based;
-    QDate detectDate = m_detectDate;
-    AppInitializer* appInitializer = m_appInitializer;
-    locker.unlock();
+    QString filePath;
+    QString projectName;
+    QString batchCode;
+    int parallelNo = 0;
+    bool useCustomColumns = false;
+    int xColumn1BasedOr0 = 0;
+    int yColumn1Based = 0;
+    QDate detectDate;
+    QJsonObject importAttributesSnapshot;
+    AppInitializer* appInitializer = nullptr;
+    {
+        QMutexLocker locker(&m_mutex);
+        filePath = m_filePath;
+        projectName = m_projectName;
+        batchCode = m_batchCode;
+        parallelNo = m_parallelNo;
+        useCustomColumns = m_useCustomColumns;
+        xColumn1BasedOr0 = m_xColumn1BasedOr0;
+        yColumn1Based = m_yColumn1Based;
+        detectDate = m_detectDate;
+        importAttributesSnapshot = m_importAttributes;
+        appInitializer = m_appInitializer;
+    }
 
     DEBUG_LOG << "小热重（原始数据）导入开始:"
               << "filePath=" << filePath
@@ -514,6 +534,7 @@ void TgSmallRawDataImportWorker::run()
             data.setTgValue(0.0);
             data.setDtgValue(0.0);
             data.setSourceName(sourceName);
+            data.setImportAttributes(importAttributesSnapshot);
             dataList.append(data);
             row++;
         }

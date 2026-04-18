@@ -59,3 +59,5 @@ void TgBigData::setTgValue(double newTgValue) { m_tgValue = newTgValue; }
 void TgBigData::setDtgValue(double newDtgValue) { m_dtgValue = newDtgValue; }
 void TgBigData::setSourceName(const QString& newSourceName) { m_sourceName = newSourceName; }
 void TgBigData::setCreatedAt(const QDateTime& newCreatedAt) { m_createdAt = newCreatedAt; }
+QJsonObject TgBigData::getImportAttributes() const { return m_importAttributes; }
+void TgBigData::setImportAttributes(const QJsonObject& attrs) { m_importAttributes = attrs; }

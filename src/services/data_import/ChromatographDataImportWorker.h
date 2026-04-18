@@ -12,7 +12,7 @@
 #include <QWaitCondition> // 用于线程等待
 #include <QSqlDatabase>
 #include <QDate>
-
+#include <QJsonObject>
 
 #include "SingleTobaccoSampleData.h"
 #include "TgBigData.h"
@@ -44,6 +44,7 @@ public:
                       const QString& shortCode,
                       int parallelNo,
                       AppInitializer* appInitializer);
+    void setImportAttributes(const QJsonObject& attrs);
     void stop();
 
 protected:
@@ -59,6 +60,7 @@ private:
     AppInitializer* m_appInitializer;
     bool m_stopped;
     QMutex m_mutex;
+    QJsonObject m_importAttributes;
 
     ChromatographyDataDAO* m_chromatographDataDao = nullptr;
     
@@ -75,8 +77,9 @@ private:
     QString findTicBackCsv(const QString& dirPath);
     // 从文件夹名称解析short_code和parallel_no
     bool parseDataFolderName(const QString& folderName, QString& shortCode, int& parallelNo);
-    // 处理CSV文件
-    bool processCsvFile(const QString& csvPath, int sampleId, const QString& shortCode, int parallelNo);
+    // 处理CSV文件（importAttrs 为 run() 起始时在 m_mutex 下拷贝的快照）
+    bool processCsvFile(const QString& csvPath, int sampleId, const QString& shortCode, int parallelNo,
+                        const QJsonObject& importAttrs);
     // 创建或获取样本ID
     int createOrGetSample(const QString& shortCode, int parallelNo);
 

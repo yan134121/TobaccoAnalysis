@@ -11,12 +11,12 @@
   "dao_operations": {
     "ProcessTgBigDataDAO": {
       "insert": {
-        "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_name)",
+        "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
         "description": "插入处理后的大热重数据记录"
       },
       "insert_batch": {
-        "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_name)",
+        "sql": "INSERT INTO process_tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (?, ?, ?, ?, ?, ?, ?)",
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
         "description": "批量插入处理后的大热重数据记录"
       },
@@ -38,7 +38,7 @@
         "description": "插入小热重数据记录"
       },
       "insert_batch": {
-        "sql": "INSERT INTO tg_small_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "sql": "INSERT INTO tg_small_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (?, ?, ?, ?, ?, ?, ?)",
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
         "description": "批量插入小热重数据记录"
       },
@@ -60,7 +60,7 @@
         "description": "插入小热重（原始数据）记录"
       },
       "insert_batch": {
-        "sql": "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "sql": "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (?, ?, ?, ?, ?, ?, ?)",
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
         "description": "批量插入小热重（原始数据）记录"
       },
@@ -82,7 +82,7 @@
         "description": "插入大热重数据记录"
       },
       "insert_batch": {
-        "sql": "INSERT INTO tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)",
+        "sql": "INSERT INTO tg_big_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) VALUES (?, ?, ?, ?, ?, ?, ?)",
         "parameters": ["sample_id", "serial_no", "temperature", "weight", "tg_value", "dtg_value", "source_filename"],
         "description": "批量插入大热重数据记录"
       },

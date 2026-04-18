@@ -61,3 +61,5 @@ void ChromatographyData::setRetentionTime(double newRetentionTime) { m_retention
 void ChromatographyData::setResponseValue(double newResponseValue) { m_responseValue = newResponseValue; } // <-- 实现 Setter
 void ChromatographyData::setSourceName(const QString& newSourceName) { m_sourceName = newSourceName; }
 void ChromatographyData::setCreatedAt(const QDateTime& newCreatedAt) { m_createdAt = newCreatedAt; }
+QJsonObject ChromatographyData::getImportAttributes() const { return m_importAttributes; }
+void ChromatographyData::setImportAttributes(const QJsonObject& attrs) { m_importAttributes = attrs; }

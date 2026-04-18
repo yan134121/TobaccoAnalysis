@@ -52,6 +52,7 @@
 #include <QObject>
 #include <QString>
 #include <QDateTime>
+#include <QJsonObject>
 
 class ChromatographyData
 {
@@ -78,6 +79,9 @@ public:
     void setSourceName(const QString& newSourceName);
     void setCreatedAt(const QDateTime& newCreatedAt);
 
+    QJsonObject getImportAttributes() const;
+    void setImportAttributes(const QJsonObject& attrs);
+
 private:
     int m_id;
     int m_sampleId;
@@ -85,6 +89,7 @@ private:
     double m_retentionTime;   // <-- 成员变量
     double m_responseValue;   // <-- 成员变量
     QString m_sourceName;
+    QJsonObject m_importAttributes; // import_attributes
     QDateTime m_createdAt;
 };
 

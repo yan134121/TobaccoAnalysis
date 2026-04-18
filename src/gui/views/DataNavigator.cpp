@@ -1118,6 +1118,14 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
                 });
             }
 
+            if (info.type == NavigatorNodeInfo::Sample) {
+                menu.addSeparator();
+                QAction* viewPropsAction = menu.addAction(tr("查看属性"));
+                connect(viewPropsAction, &QAction::triggered, this, [this, info]() {
+                    showSampleProperties(info);
+                });
+            }
+
             if (info.type == NavigatorNodeInfo::Sample && deletableSampleTypes.contains(info.dataType)) {
                 menu.addSeparator();
                 QAction* delSample = menu.addAction(tr("删除样本"));

@@ -67,10 +67,14 @@ DatabaseConnector& DatabaseConnector::getInstance() {
 
 // 获取数据库连接对象
 QSqlDatabase& DatabaseConnector::getDatabase() {
-    // DEBUG_LOG << "getDatabase() called. Connection name:" << m_db.connectionName()
-    //          << "Driver:" << m_db.driverName()
-    //          << "isValid:" << m_db.isValid()
-    //          << "isOpen:" << m_db.isOpen();
+    // 确保每次使用连接时字符集均为 utf8mb4（只在连接打开时执行一次）
+    if (m_db.isOpen() && !m_utf8Set) {
+        QSqlQuery q(m_db);
+        q.exec("SET NAMES utf8mb4");
+        q.exec("SET CHARACTER SET utf8mb4");
+        m_utf8Set = true;
+        DEBUG_LOG << "DatabaseConnector: SET NAMES utf8mb4 已执行";
+    }
     return m_db;
 }
 
@@ -96,32 +100,34 @@ bool DatabaseConnector::connectOrCreateDatabase(const QVariantMap& config)
     }
 
     // --- 步骤 1: 先连接 MySQL 服务 (不指定具体数据库)，以便执行 CREATE DATABASE 命令 ---
+    // 临时 QSqlDatabase 必须在 removeDatabase 之前析构，否则会触发 “connection is still in use”
     QString tmpConnectionName = QString("tmp_db_creation_conn_%1").arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
-    QSqlDatabase tmpDb = QSqlDatabase::addDatabase("QMYSQL", tmpConnectionName);
-    tmpDb.setHostName(host);
-    tmpDb.setUserName(user);
-    tmpDb.setPassword(password);
-    tmpDb.setPort(port);
+    bool dbCreationStepOk = false;
+    {
+        QSqlDatabase tmpDb = QSqlDatabase::addDatabase("QMYSQL", tmpConnectionName);
+        tmpDb.setHostName(host);
+        tmpDb.setUserName(user);
+        tmpDb.setPassword(password);
+        tmpDb.setPort(port);
 
-    if (!tmpDb.open()) {
-        WARNING_LOG << "无法连接到MySQL服务（用于创建数据库）:" << tmpDb.lastError().text();
-        QSqlDatabase::removeDatabase(tmpConnectionName); // 清理临时连接
+        if (!tmpDb.open()) {
+            WARNING_LOG << "无法连接到MySQL服务（用于创建数据库）:" << tmpDb.lastError().text();
+        } else {
+            QString createDbSql = QString("CREATE DATABASE IF NOT EXISTS `%1` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci").arg(dbName);
+            QSqlQuery query(tmpDb);
+            if (!query.exec(createDbSql)) {
+                WARNING_LOG << "创建数据库失败:" << query.lastError().text() << "SQL:" << createDbSql;
+            } else {
+                dbCreationStepOk = true;
+            }
+            tmpDb.close();
+        }
+    }
+    QSqlDatabase::removeDatabase(tmpConnectionName);
+
+    if (!dbCreationStepOk) {
         return false;
     }
-
-    // --- 步骤 2: 判断数据库是否存在，如果不存在就创建 ---
-    QSqlQuery query(tmpDb);
-    // 使用反引号 (`) 包裹数据库名，以防数据库名包含特殊字符
-    QString createDbSql = QString("CREATE DATABASE IF NOT EXISTS `%1` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci").arg(dbName);
-    if (!query.exec(createDbSql)) {
-        WARNING_LOG << "创建数据库失败:" << query.lastError().text() << "SQL:" << createDbSql;
-        tmpDb.close();
-        QSqlDatabase::removeDatabase(tmpConnectionName);
-        return false;
-    }
-
-    tmpDb.close(); // 关闭临时连接
-    QSqlDatabase::removeDatabase(tmpConnectionName); // 从Qt连接列表中移除临时连接
 
     // --- 步骤 3: 再连接到指定数据库 (使用 m_db 成员) ---
     // 先确保 m_db 处于关闭状态，如果之前连接失败过
@@ -135,13 +141,6 @@ bool DatabaseConnector::connectOrCreateDatabase(const QVariantMap& config)
     m_db.setPassword(password);
     m_db.setPort(port);
 
-    // // --- 关键修改：在这里设置连接选项，声明客户端编码 ---
-    // // 告诉 MySQL 服务器客户端将使用 utf8mb4 编码进行通信
-    // m_db.setConnectOptions("SET NAMES 'utf8mb4'");
-    // // 另一种更通用的写法，但 'SET NAMES' 几乎总是有效且推荐的
-    // // m_db.setConnectOptions("MYSQL_OPT_RECONNECT=1;MYSQL_SET_CHARSET_NAME=utf8mb4");
-    // // --- 结束关键修改 ---
-
     if (!m_db.open()) {
         WARNING_LOG << "连接到指定数据库失败:" << m_db.lastError().text();
         return false;
@@ -149,12 +148,14 @@ bool DatabaseConnector::connectOrCreateDatabase(const QVariantMap& config)
 
     DEBUG_LOG << "数据库连接成功，当前使用数据库:" << dbName;
 
-    // // --- 关键修改：在这里设置连接选项，声明客户端编码 ---
-    // // 告诉 MySQL 服务器客户端将使用 utf8mb4 编码进行通信
-    // m_db.setConnectOptions("SET NAMES 'utf8mb4'");
-    // // 另一种更通用的写法，但 'SET NAMES' 几乎总是有效且推荐的
-    // // m_db.setConnectOptions("MYSQL_OPT_RECONNECT=1;MYSQL_SET_CHARSET_NAME=utf8mb4");
-    // // --- 结束关键修改 ---
+    // open() 后立即执行 SET NAMES，双重保险
+    m_utf8Set = false; // 重置标志，让 getDatabase() 在下次调用时重新执行
+    {
+        QSqlQuery q(m_db);
+        q.exec("SET NAMES utf8mb4");
+        q.exec("SET CHARACTER SET utf8mb4");
+        m_utf8Set = true;
+    }
 
     return true;
 }

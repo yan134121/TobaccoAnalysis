@@ -17,6 +17,7 @@
 #include "TgBigData.h"
 #include "TgSmallData.h"
 #include "ChromatographyData.h"
+#include <QJsonObject>
 
 // 数据访问对象
 #include "data_access/TgBigDataDAO.h"
@@ -88,15 +89,13 @@ private slots:
     void on_importSensorDataButton_clicked(); // <-- 修改逻辑
     void on_tableView_clicked(const QModelIndex& index);
 
-    // --- 新增槽函数：加载传感器数据并显示 ---
-    void on_loadSensorDataButton_clicked();
-    // --- 结束新增 ---
-
     void on_importTgBigDataButton_clicked();
     void on_importTgSmallDataButton_clicked();
     void on_importTgSmallRawDataButton_clicked();
     void on_importChromatographDataButton_clicked();
     void on_importProcessTgBigDataButton_clicked();
+    void on_editImportAttributesButton_clicked();
+    void onTableViewContextMenu(const QPoint& pos);
 
 private:
     Ui::SingleMaterialDataWidget *ui; // UI 界面对象
@@ -174,6 +173,8 @@ private:
 
     AppInitializer* m_appInitializer = nullptr; // <-- 新增成员变量
 
+    // 当前导入属性（在所有导入操作中共享，由「编辑导入属性」按钮设置）
+    QJsonObject m_importAttributes;
 
     QMap<QString, QStringList> m_tgBigDataFileGroups;
 };

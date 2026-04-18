@@ -1,6 +1,7 @@
 #include "SingleTobaccoSampleService.h"
 #include <QDebug>
 #include <QFileInfo>
+#include <QJsonObject>
 #include "utils/file_handler/XlsxParser.h"
 #include "utils/file_handler/FileHandlerFactory.h"
 #include "data_access/ProcessTgBigDataDAO.h"
@@ -8,7 +9,7 @@
 #include "Logger.h"
 
 // 导入ProcessTgBigData数据
-bool SingleTobaccoSampleService::importProcessTgBigDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage)
+bool SingleTobaccoSampleService::importProcessTgBigDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes)
 {
     QFileInfo fileInfo(filePath);
     if (!fileInfo.exists()) {
@@ -86,6 +87,9 @@ bool SingleTobaccoSampleService::importProcessTgBigDataForSample(int sampleId, c
         }
         return false;
     }
+
+    // 为每条记录注入导入属性
+    for (ProcessTgBigData& d : processTgBigDataList) { d.setImportAttributes(importAttributes); }
 
     // 先删除该样本的现有数据
     m_processTgBigDataDao->removeBySampleId(sampleId);

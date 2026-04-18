@@ -16,6 +16,7 @@
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QDirIterator>
+#include <QJsonObject>
 
 
 // TgBigDataImportWorker 类实现
@@ -87,12 +88,22 @@ void TgBigDataImportWorker::stop()
     QMutexLocker locker(&m_mutex);
     m_stopped = true;
 }
+
+void TgBigDataImportWorker::setImportAttributes(const QJsonObject& attrs)
+{
+    QMutexLocker locker(&m_mutex);
+    m_importAttributes = attrs;
+}
     
 void TgBigDataImportWorker::run()
 {
-    QMutexLocker locker(&m_mutex);
-    QString dirPath = m_dirPath;
-    locker.unlock();
+    QString dirPath;
+    QJsonObject importAttributesSnapshot;
+    {
+        QMutexLocker locker(&m_mutex);
+        dirPath = m_dirPath;
+        importAttributesSnapshot = m_importAttributes;
+    }
     
     // 初始化线程独立的数据库连接
     if (!initThreadDatabase()) {
@@ -172,7 +183,8 @@ void TgBigDataImportWorker::run()
                 
                 // 读取CSV数据
                 QList<TgBigData> dataList = readTgBigDataFromCsv(in, filePath, sampleId);
-                
+                for (TgBigData& d : dataList) { d.setImportAttributes(importAttributesSnapshot); }
+
                 if (dataList.isEmpty()) {
                     WARNING_LOG << "从文件中未读取到有效数据:" << filePath;
                     failCount++;
@@ -241,7 +253,8 @@ bool TgBigDataImportWorker::initThreadDatabase()
                 emit importError("无法打开线程数据库连接: " + m_threadDb.lastError().text());
                 return false;
             }
-            
+            { QSqlQuery q(m_threadDb); q.exec("SET NAMES utf8mb4"); }
+
             // 打印子线程数据库连接信息
             DEBUG_LOG << "大热重数据导入子线程数据库连接信息:";
             DEBUG_LOG << "  连接名称:" << m_threadDb.connectionName();

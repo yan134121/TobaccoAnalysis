@@ -56,6 +56,7 @@ private:
 
     QSqlDatabase m_db;           // 主数据库连接对象
     QString m_connectionName;    // 用于主连接的唯一名称
+    bool m_utf8Set = false;      // 是否已执行 SET NAMES utf8mb4
 };
 
 #endif // DATABASECONNECTOR_H

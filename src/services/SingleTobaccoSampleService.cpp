@@ -129,7 +129,7 @@ QStringList SingleTobaccoSampleService::getAllUniqueBlendTypes() {
 
 
 // --- 导入大热重数据 (修改为接收 DataColumnMapping 列表) ---
-bool SingleTobaccoSampleService::importTgBigDataForSample(int sampleId, const QString& filePath, int replicateNoBase, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage)
+bool SingleTobaccoSampleService::importTgBigDataForSample(int sampleId, const QString& filePath, int replicateNoBase, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes)
 {
     errorMessage.clear();
     if (sampleId == -1) { /* ... */ return false; }
@@ -173,6 +173,7 @@ bool SingleTobaccoSampleService::importTgBigDataForSample(int sampleId, const QS
                 db.rollback(); return false;
             }
 
+            for (TgBigData& d : bigDataList) { d.setImportAttributes(importAttributes); }
             if (!m_tgBigDataDao->insertBatch(bigDataList)) {
                 errorMessage = QString("样本ID %1, 平行样 %2 的大热重数据批量插入失败: %3").arg(sampleId).arg(currentReplicateNo).arg(db.lastError().text());
                 WARNING_LOG << errorMessage; db.rollback(); return false;
@@ -189,7 +190,7 @@ bool SingleTobaccoSampleService::importTgBigDataForSample(int sampleId, const QS
 }
 
 // --- 导入小热重数据 和 色谱数据 (请同步修改，移除 startDataCol 参数，并遍历 DataColumnMapping) ---
-bool SingleTobaccoSampleService::importTgSmallDataForSample(int sampleId, const QString& filePath, int replicateNoBase, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage) {
+bool SingleTobaccoSampleService::importTgSmallDataForSample(int sampleId, const QString& filePath, int replicateNoBase, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes) {
     errorMessage.clear();
     if (sampleId == -1) { errorMessage = "未指定单料烟基础信息ID，无法导入小热重数据。"; WARNING_LOG << errorMessage; return false; }
     if (!m_fileHandlerFactory) { errorMessage = "文件处理器工厂未初始化。"; FATAL_LOG << errorMessage; return false; }
@@ -220,6 +221,7 @@ bool SingleTobaccoSampleService::importTgSmallDataForSample(int sampleId, const 
                 WARNING_LOG << errorMessage; db.rollback(); return false;
             }
 
+            for (TgSmallData& d : smallDataList) { d.setImportAttributes(importAttributes); }
             if (!m_tgSmallDataDao->insertBatch(smallDataList)) {
                 errorMessage = QString("样本ID %1, 平行样 %2 的小热重数据批量插入失败: %3").arg(sampleId).arg(currentReplicateNo).arg(db.lastError().text());
                 WARNING_LOG << errorMessage; db.rollback(); return false;
@@ -234,7 +236,7 @@ bool SingleTobaccoSampleService::importTgSmallDataForSample(int sampleId, const 
     catch (...) { errorMessage = "导入过程中发生未知异常。"; FATAL_LOG << errorMessage; db.rollback(); return false; }
 }
 
-bool SingleTobaccoSampleService::importChromatographyDataForSample(int sampleId, const QString& filePath, int replicateNoBase, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage) {
+bool SingleTobaccoSampleService::importChromatographyDataForSample(int sampleId, const QString& filePath, int replicateNoBase, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes) {
     errorMessage.clear();
     if (sampleId == -1) { errorMessage = "未指定单料烟基础信息ID，无法导入色谱数据。"; WARNING_LOG << errorMessage; return false; }
     if (!m_fileHandlerFactory) { errorMessage = "文件处理器工厂未初始化。"; FATAL_LOG << errorMessage; return false; }
@@ -265,6 +267,7 @@ bool SingleTobaccoSampleService::importChromatographyDataForSample(int sampleId,
                 WARNING_LOG << errorMessage; db.rollback(); return false;
             }
 
+            for (ChromatographyData& d : chromatographyDataList) { d.setImportAttributes(importAttributes); }
             if (!m_chromatographyDataDao->insertBatch(chromatographyDataList)) {
                 errorMessage = QString("样本ID %1, 平行样 %2 的色谱数据批量插入失败: %3").arg(sampleId).arg(currentReplicateNo).arg(db.lastError().text());
                 WARNING_LOG << errorMessage; db.rollback(); return false;

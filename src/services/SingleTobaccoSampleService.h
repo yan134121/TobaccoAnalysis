@@ -9,6 +9,7 @@
 #include <QMap>
 #include <QVariant>
 #include <QString>
+#include <QJsonObject>
 
 // --- 前向声明所有依赖的类 ---
 // 前向声明
@@ -146,11 +147,11 @@ public:
     QStringList getAllUniqueBlendTypes(); // <-- 单打/混打也从字典获取
     // --- 结束修改 ---
 
-    // --- 修改：导入方法接收 startDataCol 和 DataColumnMapping 参数 ---
-    bool importTgBigDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage);
-    bool importProcessTgBigDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage);
-    bool importTgSmallDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage);
-    bool importChromatographyDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage);
+    // --- 修改：导入方法接收 startDataCol 和 DataColumnMapping 参数，以及导入属性 ---
+    bool importTgBigDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes = QJsonObject());
+    bool importProcessTgBigDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes = QJsonObject());
+    bool importTgSmallDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes = QJsonObject());
+    bool importChromatographyDataForSample(int sampleId, const QString& filePath, int replicateNo, int startDataRow, int startDataCol, const DataColumnMapping& mapping, QString& errorMessage, const QJsonObject& importAttributes = QJsonObject());
     // --- 结束修改 ---
 
     // --- 新增：获取指定样本的传感器数据的方法 ---

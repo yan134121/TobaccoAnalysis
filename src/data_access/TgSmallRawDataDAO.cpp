@@ -4,6 +4,22 @@
 #include "Logger.h"
 #include <QSqlError>
 #include <QVariantList>
+#include <QJsonDocument>
+#include <QSqlQuery>
+#include <QSqlRecord>
+
+static bool hasImportAttrsColumn_tgsmallraw(QSqlDatabase& db)
+{
+    QSqlQuery q(db);
+    bool found = false;
+    if (q.exec("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+               "AND TABLE_NAME = 'tg_small_raw_data' AND COLUMN_NAME = 'import_attributes'"))
+        found = q.next();
+    if (!found && q.exec("SHOW COLUMNS FROM `tg_small_raw_data` LIKE 'import_attributes'"))
+        found = q.next();
+    DEBUG_LOG << "tg_small_raw_data.import_attributes 列存在:" << found;
+    return found;
+}
 
 TgSmallData TgSmallRawDataDAO::createTgSmallDataFromQuery(QSqlQuery& query)
 {
@@ -16,25 +32,35 @@ TgSmallData TgSmallRawDataDAO::createTgSmallDataFromQuery(QSqlQuery& query)
     t.setTgValue(query.value("tg_value").toDouble());
     t.setDtgValue(query.value("dtg_value").toDouble());
     t.setSourceName(query.value("source_filename").toString());
-    t.setCreatedAt(query.value("created_at").toDateTime());
+    if (query.record().indexOf(QStringLiteral("import_attributes")) >= 0) {
+        const QVariant attrVar = query.value(QStringLiteral("import_attributes"));
+        if (!attrVar.isNull()) {
+            const QString attrStr = attrVar.toString();
+            if (!attrStr.isEmpty())
+                t.setImportAttributes(QJsonDocument::fromJson(attrStr.toUtf8()).object());
+        }
+    }
+    if (query.record().indexOf(QStringLiteral("created_at")) >= 0) {
+        t.setCreatedAt(query.value(QStringLiteral("created_at")).toDateTime());
+    }
     return t;
 }
 
 bool TgSmallRawDataDAO::insert(TgSmallData& tgSmallData)
 {
     QSqlDatabase db = m_db.isValid() ? m_db : DatabaseConnector::getInstance().getDatabase();
-    if (!db.isOpen()) {
-        WARNING_LOG << "Database not open for TgSmallRawData insert operation.";
-        return false;
-    }
+    if (!db.isOpen()) { WARNING_LOG << "Database not open for TgSmallRawData insert."; return false; }
 
-    SqlConfigLoader& loader = SqlConfigLoader::getInstance();
-    SqlConfigLoader::SqlOperation operation = loader.getSqlOperation("TgSmallRawDataDAO", "insert");
-    QString sql = operation.sql;
-    if (sql.isEmpty()) {
-        WARNING_LOG << "未找到TgSmallRawDataDAO.insert的SQL配置，使用默认SQL";
-        sql = "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) "
-              "VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)";
+    const bool withAttrs = hasImportAttrsColumn_tgsmallraw(db);
+    QString sql;
+    if (withAttrs) {
+        sql = "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename, import_attributes) "
+              "VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename, :import_attributes)";
+    } else {
+        sql = SqlConfigLoader::getInstance().getSqlOperation("TgSmallRawDataDAO", "insert").sql;
+        if (sql.isEmpty())
+            sql = "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) "
+                  "VALUES (:sample_id, :serial_no, :temperature, :weight, :tg_value, :dtg_value, :source_filename)";
     }
 
     QSqlQuery query(db);
@@ -46,48 +72,57 @@ bool TgSmallRawDataDAO::insert(TgSmallData& tgSmallData)
     query.bindValue(":tg_value", tgSmallData.getTgValue());
     query.bindValue(":dtg_value", tgSmallData.getDtgValue());
     query.bindValue(":source_filename", tgSmallData.getSourceName());
+    if (withAttrs)
+        query.bindValue(":import_attributes",
+            QString::fromUtf8(QJsonDocument(tgSmallData.getImportAttributes()).toJson(QJsonDocument::Compact)));
 
-    if (query.exec()) {
-        tgSmallData.setId(query.lastInsertId().toInt());
-        return true;
-    }
-
+    if (query.exec()) { tgSmallData.setId(query.lastInsertId().toInt()); return true; }
     WARNING_LOG << "Insert TgSmallRawData failed:" << query.lastError().text();
     return false;
 }
 
 bool TgSmallRawDataDAO::insertBatch(QList<TgSmallData>& tgSmallDataList)
 {
-    if (tgSmallDataList.isEmpty()) {
-        DEBUG_LOG << "TgSmallRawDataList is empty, no batch insert performed.";
-        return true;
-    }
+    if (tgSmallDataList.isEmpty()) { DEBUG_LOG << "TgSmallRawDataList is empty."; return true; }
     QSqlDatabase db = m_db.isValid() ? m_db : DatabaseConnector::getInstance().getDatabase();
-    if (!db.isOpen()) {
-        WARNING_LOG << "Database not open for TgSmallRawData batch insert operation.";
-        return false;
-    }
+    if (!db.isOpen()) { WARNING_LOG << "Database not open for TgSmallRawData batch insert."; return false; }
 
-    SqlConfigLoader& loader = SqlConfigLoader::getInstance();
-    SqlConfigLoader::SqlOperation operation = loader.getSqlOperation("TgSmallRawDataDAO", "insert_batch");
-    QString sql = operation.sql;
-    if (sql.isEmpty()) {
-        WARNING_LOG << "未找到TgSmallRawDataDAO.insert_batch的SQL配置，使用默认SQL";
-        sql = "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?)";
+    const bool withAttrs = hasImportAttrsColumn_tgsmallraw(db);
+    QString sql;
+    if (withAttrs) {
+        sql = "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename, import_attributes) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    } else {
+        sql = SqlConfigLoader::getInstance().getSqlOperation("TgSmallRawDataDAO", "insert_batch").sql;
+        if (sql.isEmpty())
+            sql = "INSERT INTO tg_small_raw_data (sample_id, serial_no, temperature, weight, tg_value, dtg_value, source_filename) "
+                  "VALUES (?, ?, ?, ?, ?, ?, ?)";
     }
 
     QSqlQuery query(db);
     query.prepare(sql);
 
-    QVariantList sampleIds;
-    QVariantList serialNos;
-    QVariantList temperatures;
-    QVariantList weight;
-    QVariantList tgValues;
-    QVariantList dtgValues;
-    QVariantList sourceNames;
+    if (withAttrs) {
+        for (const TgSmallData& data : tgSmallDataList) {
+            query.bindValue(0, data.getSampleId());
+            query.bindValue(1, data.getSerialNo());
+            query.bindValue(2, data.getTemperature());
+            query.bindValue(3, data.getWeight());
+            query.bindValue(4, data.getTgValue());
+            query.bindValue(5, data.getDtgValue());
+            query.bindValue(6, data.getSourceName());
+            query.bindValue(7, QString::fromUtf8(
+                QJsonDocument(data.getImportAttributes()).toJson(QJsonDocument::Compact)));
+            if (!query.exec()) {
+                WARNING_LOG << "Batch insert TgSmallRawData (sequential) failed:" << query.lastError().text();
+                return false;
+            }
+        }
+        DEBUG_LOG << "Batch insert TgSmallRawData successful (sequential with import_attributes), rows:" << tgSmallDataList.size();
+        return true;
+    }
 
+    QVariantList sampleIds, serialNos, temperatures, weight, tgValues, dtgValues, sourceNames;
     for (const TgSmallData& data : tgSmallDataList) {
         sampleIds << data.getSampleId();
         serialNos << data.getSerialNo();
@@ -110,7 +145,6 @@ bool TgSmallRawDataDAO::insertBatch(QList<TgSmallData>& tgSmallDataList)
         DEBUG_LOG << "Batch insert TgSmallRawData successful, inserted" << tgSmallDataList.size() << "rows.";
         return true;
     }
-
     WARNING_LOG << "Batch insert TgSmallRawData failed:" << query.lastError().text();
     return false;
 }
@@ -118,18 +152,10 @@ bool TgSmallRawDataDAO::insertBatch(QList<TgSmallData>& tgSmallDataList)
 QList<TgSmallData> TgSmallRawDataDAO::getBySampleId(int sampleId)
 {
     QSqlDatabase db = m_db.isValid() ? m_db : DatabaseConnector::getInstance().getDatabase();
-    if (!db.isOpen()) {
-        WARNING_LOG << "Database not open for TgSmallRawData query operation.";
-        return QList<TgSmallData>();
-    }
+    if (!db.isOpen()) { WARNING_LOG << "Database not open for TgSmallRawData query."; return {}; }
 
-    SqlConfigLoader& loader = SqlConfigLoader::getInstance();
-    SqlConfigLoader::SqlOperation operation = loader.getSqlOperation("TgSmallRawDataDAO", "select_by_sample_id");
-    QString sql = operation.sql;
-    if (sql.isEmpty()) {
-        WARNING_LOG << "未找到TgSmallRawDataDAO.select_by_sample_id的SQL配置，使用默认SQL";
-        sql = "SELECT * FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY id, temperature";
-    }
+    QString sql = SqlConfigLoader::getInstance().getSqlOperation("TgSmallRawDataDAO", "select_by_sample_id").sql;
+    if (sql.isEmpty()) sql = "SELECT * FROM tg_small_raw_data WHERE sample_id = :sample_id ORDER BY id, temperature";
 
     QSqlQuery query(db);
     query.prepare(sql);
@@ -137,31 +163,20 @@ QList<TgSmallData> TgSmallRawDataDAO::getBySampleId(int sampleId)
 
     QList<TgSmallData> list;
     if (query.exec()) {
-        while (query.next()) {
-            list.append(createTgSmallDataFromQuery(query));
-        }
+        while (query.next()) list.append(createTgSmallDataFromQuery(query));
     } else {
         WARNING_LOG << "Query TgSmallRawData failed:" << query.lastError().text();
     }
-
     return list;
 }
 
 bool TgSmallRawDataDAO::removeBySampleId(int sampleId)
 {
     QSqlDatabase db = m_db.isValid() ? m_db : DatabaseConnector::getInstance().getDatabase();
-    if (!db.isOpen()) {
-        WARNING_LOG << "Database not open for TgSmallRawData delete operation.";
-        return false;
-    }
+    if (!db.isOpen()) { WARNING_LOG << "Database not open for TgSmallRawData delete."; return false; }
 
-    SqlConfigLoader& loader = SqlConfigLoader::getInstance();
-    SqlConfigLoader::SqlOperation operation = loader.getSqlOperation("TgSmallRawDataDAO", "delete_by_sample_id");
-    QString sql = operation.sql;
-    if (sql.isEmpty()) {
-        WARNING_LOG << "未找到TgSmallRawDataDAO.delete_by_sample_id的SQL配置，使用默认SQL";
-        sql = "DELETE FROM tg_small_raw_data WHERE sample_id = :sample_id";
-    }
+    QString sql = SqlConfigLoader::getInstance().getSqlOperation("TgSmallRawDataDAO", "delete_by_sample_id").sql;
+    if (sql.isEmpty()) sql = "DELETE FROM tg_small_raw_data WHERE sample_id = :sample_id";
 
     QSqlQuery query(db);
     query.prepare(sql);
@@ -171,7 +186,6 @@ bool TgSmallRawDataDAO::removeBySampleId(int sampleId)
         DEBUG_LOG << "Removed TgSmallRawData for sample_id" << sampleId << ", affected" << query.numRowsAffected() << "rows.";
         return query.numRowsAffected() > 0;
     }
-
     WARNING_LOG << "Delete TgSmallRawData failed:" << query.lastError().text();
     return false;
 }

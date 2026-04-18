@@ -5,6 +5,7 @@
 #include <QMutex>
 #include <QSqlDatabase>
 #include <QDate>
+#include <QJsonObject>
 
 class AppInitializer;
 class TgSmallRawDataDAO;
@@ -39,6 +40,7 @@ public:
                        int yColumn1Based,
                        AppInitializer* appInitializer);
 
+    void setImportAttributes(const QJsonObject& attrs);
     void stop();
 
 signals:
@@ -66,6 +68,7 @@ private:
     bool m_useCustomColumns = true;
     int m_xColumn1BasedOr0 = 1;
     int m_yColumn1Based = 3; // weight 列（1-based）
+    QJsonObject m_importAttributes;
     AppInitializer* m_appInitializer = nullptr;
     bool m_stopped = false;
 

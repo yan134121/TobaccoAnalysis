@@ -10,6 +10,7 @@
 #include <QSqlError>
 #include <QDateTime>
 #include <QRegularExpression>
+#include <QJsonDocument>
 
 // 第三方库
 #include "third_party/QXlsx/header/xlsxdocument.h"
@@ -67,6 +68,12 @@ void ChromatographDataImportWorker::stop()
     m_stopped = true;
 }
 
+void ChromatographDataImportWorker::setImportAttributes(const QJsonObject& attrs)
+{
+    QMutexLocker locker(&m_mutex);
+    m_importAttributes = attrs;
+}
+
 // 初始化线程独立的数据库连接
 bool ChromatographDataImportWorker::initThreadDatabase()
 {
@@ -93,7 +100,8 @@ bool ChromatographDataImportWorker::initThreadDatabase()
             emit importError("无法打开线程数据库连接: " + m_threadDb.lastError().text());
             return false;
         }
-        
+        { QSqlQuery q(m_threadDb); q.exec("SET NAMES utf8mb4"); }
+
         // 打印子线程数据库连接信息
         DEBUG_LOG << "色谱数据导入子线程数据库连接信息:";
         DEBUG_LOG << "  连接名称:" << m_threadDb.connectionName();
@@ -185,7 +193,8 @@ bool ChromatographDataImportWorker::parseDataFolderName(const QString& folderNam
 }
 
 // 处理CSV文件并导入数据
-bool ChromatographDataImportWorker::processCsvFile(const QString& csvPath, int sampleId, const QString& shortCode, int parallelNo)
+bool ChromatographDataImportWorker::processCsvFile(const QString& csvPath, int sampleId, const QString& shortCode, int parallelNo,
+                                                   const QJsonObject& importAttrs)
 {
     QFile file(csvPath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -212,10 +221,26 @@ bool ChromatographDataImportWorker::processCsvFile(const QString& csvPath, int s
         return false;
     }
     
+    // 检测 import_attributes 列是否存在（SHOW COLUMNS 作为 information_schema 失败时的回退）
+    bool hasImportAttrsCol = false;
+    {
+        QSqlQuery chk(m_threadDb);
+        if (chk.exec("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                     "AND TABLE_NAME = 'chromatography_data' AND COLUMN_NAME = 'import_attributes'"))
+            hasImportAttrsCol = chk.next();
+        if (!hasImportAttrsCol && chk.exec("SHOW COLUMNS FROM `chromatography_data` LIKE 'import_attributes'"))
+            hasImportAttrsCol = chk.next();
+    }
+
     // 准备SQL语句
     QSqlQuery query(m_threadDb);
-    query.prepare("INSERT INTO chromatography_data (sample_id, retention_time, response_value, source_filename) "
-                 "VALUES (?, ?, ?, ?)");
+    if (hasImportAttrsCol) {
+        query.prepare("INSERT INTO chromatography_data (sample_id, retention_time, response_value, source_filename, import_attributes) "
+                     "VALUES (?, ?, ?, ?, ?)");
+    } else {
+        query.prepare("INSERT INTO chromatography_data (sample_id, retention_time, response_value, source_filename) "
+                     "VALUES (?, ?, ?, ?)");
+    }
     
     // 读取数据点 - 从"Start of data points"的下一行开始
     int count = 0;
@@ -240,8 +265,12 @@ bool ChromatographDataImportWorker::processCsvFile(const QString& csvPath, int s
                 query.bindValue(0, sampleId);
                 query.bindValue(1, retentionTime);
                 query.bindValue(2, responseValue);
-                query.bindValue(3, QFileInfo(csvPath).fileName()); // 使用文件名作为来源
-                
+                query.bindValue(3, QFileInfo(csvPath).fileName());
+                if (hasImportAttrsCol) {
+                    query.bindValue(4, QString::fromUtf8(
+                        QJsonDocument(importAttrs).toJson(QJsonDocument::Compact)));
+                }
+
                 if (!query.exec()) {
                     WARNING_LOG << "插入数据失败:" << query.lastError().text();
                 } else {
@@ -330,13 +359,21 @@ int ChromatographDataImportWorker::createOrGetSample(const QString& shortCode, i
 
 void ChromatographDataImportWorker::run()
 {
-    QMutexLocker locker(&m_mutex);
-    QString dirPath = m_dirPath;
-    QString projectName = m_projectName;
-    QString batchCode = m_batchCode;
-    QString shortCode = m_shortCode;
-    int parallelNo = m_parallelNo;
-    locker.unlock();
+    QString dirPath;
+    QString projectName;
+    QString batchCode;
+    QString shortCode;
+    int parallelNo = 0;
+    QJsonObject importAttributesSnapshot;
+    {
+        QMutexLocker locker(&m_mutex);
+        dirPath = m_dirPath;
+        projectName = m_projectName;
+        batchCode = m_batchCode;
+        shortCode = m_shortCode;
+        parallelNo = m_parallelNo;
+        importAttributesSnapshot = m_importAttributes;
+    }
     
     // 初始化线程独立的数据库连接
     if (!initThreadDatabase()) {
@@ -432,7 +469,7 @@ void ChromatographDataImportWorker::run()
                         m_chromatographDataDao->removeBySampleId(sampleId);
 
                         // 处理CSV文件并导入数据
-                        if (processCsvFile(csvPath, sampleId, fileShortCode, fileParallelNo)) {
+                        if (processCsvFile(csvPath, sampleId, fileShortCode, fileParallelNo, importAttributesSnapshot)) {
                             successCount++;
                             
                             // 获取导入的数据点数量

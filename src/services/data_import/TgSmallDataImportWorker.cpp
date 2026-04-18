@@ -18,8 +18,7 @@
 #include <QRegularExpression>
 #include <QApplication>
 #include <QFileInfo>
-
-
+#include <QJsonObject>
 
 
 // TgSmallDataImportWorker 实现
@@ -96,6 +95,12 @@ void TgSmallDataImportWorker::stop()
     m_stopped = true;
 }
 
+void TgSmallDataImportWorker::setImportAttributes(const QJsonObject& attrs)
+{
+    QMutexLocker locker(&m_mutex);
+    m_importAttributes = attrs;
+}
+
 // 初始化线程独立的数据库连接
 bool TgSmallDataImportWorker::initThreadDatabase()
 {
@@ -122,7 +127,8 @@ bool TgSmallDataImportWorker::initThreadDatabase()
             emit importError("无法打开线程数据库连接: " + m_threadDb.lastError().text());
             return false;
         }
-        
+        { QSqlQuery q(m_threadDb); q.exec("SET NAMES utf8mb4"); }
+
         // 打印子线程数据库连接信息
         DEBUG_LOG << "子线程数据库连接信息:";
         DEBUG_LOG << "  连接名称:" << m_threadDb.connectionName();
@@ -313,16 +319,27 @@ int TgSmallDataImportWorker::createOrGetSample(const SingleTobaccoSampleData &sa
 
 void TgSmallDataImportWorker::run()
 {
-    QMutexLocker locker(&m_mutex);
-    QString filePath = m_filePath;
-    QString projectName = m_projectName;
-    QString batchCode = m_batchCode;
-    int parallelNo = m_parallelNo;
-    bool useCustomColumns = m_useCustomColumns;
-    int xColumn1BasedOr0 = m_xColumn1BasedOr0;
-    int yColumn1Based = m_yColumn1Based;
-    AppInitializer* appInitializer = m_appInitializer;
-    locker.unlock();
+    QString filePath;
+    QString projectName;
+    QString batchCode;
+    int parallelNo = 0;
+    bool useCustomColumns = false;
+    int xColumn1BasedOr0 = 0;
+    int yColumn1Based = 0;
+    QJsonObject importAttributesSnapshot;
+    AppInitializer* appInitializer = nullptr;
+    {
+        QMutexLocker locker(&m_mutex);
+        filePath = m_filePath;
+        projectName = m_projectName;
+        batchCode = m_batchCode;
+        parallelNo = m_parallelNo;
+        useCustomColumns = m_useCustomColumns;
+        xColumn1BasedOr0 = m_xColumn1BasedOr0;
+        yColumn1Based = m_yColumn1Based;
+        importAttributesSnapshot = m_importAttributes;
+        appInitializer = m_appInitializer;
+    }
     
     // 初始化线程独立的数据库连接
     if (!initThreadDatabase()) {
@@ -528,6 +545,7 @@ void TgSmallDataImportWorker::run()
                 data.setTgValue(0.0);
                 data.setDtgValue(dtgValue);
                 data.setSourceName(QFileInfo(filePath).fileName() + ":" + sheetName);
+                data.setImportAttributes(importAttributesSnapshot);
 
                 dataList.append(data);
             }

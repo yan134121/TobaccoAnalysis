@@ -67,6 +67,8 @@
 
 // --------------------【外部库】--------------------
 #include "third_party/QXlsx/header/xlsxdocument.h"
+#include "src/gui/dialogs/ImportAttributesDialog.h"
+#include <QMenu>
 
 // SingleMaterialDataWidget::SingleMaterialDataWidget(SingleTobaccoSampleService* service, QWidget *parent)
 //     : QWidget(parent)
@@ -120,8 +122,15 @@ SingleMaterialDataWidget::SingleMaterialDataWidget(SingleTobaccoSampleService* s
     ui->sensorTypeComboBox->addItem("小热重", "TG_SMALL");
     ui->sensorTypeComboBox->addItem("色谱", "CHROMATOGRAPHY");
 
+    // 初始化导入属性为默认值
+    m_importAttributes = SampleAttributeDialog::defaultAttributes();
+
     // --- 连接新增 UI 控件信号 ---
     connect(ui->tableView, &QTableView::clicked, this, &SingleMaterialDataWidget::on_tableView_clicked);
+    // 右键菜单
+    ui->tableView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->tableView, &QTableView::customContextMenuRequested,
+            this, &SingleMaterialDataWidget::onTableViewContextMenu);
     // connect(ui->importSensorDataButton, &QPushButton::clicked, this, &SingleMaterialDataWidget::on_importSensorDataButton_clicked);
     // connect(ui->loadSensorDataButton, &QPushButton::clicked, this, &SingleMaterialDataWidget::on_loadSensorDataButton_clicked); // <-- 连接按钮
 
@@ -666,13 +675,6 @@ void SingleMaterialDataWidget::loadSensorDataForSelectedTobacco()
 }
 
 
-// --- 槽函数：点击加载传感器数据按钮 ---
-void SingleMaterialDataWidget::on_loadSensorDataButton_clicked()
-{
-    loadSensorDataForSelectedTobacco();
-}
-
-
 void SingleMaterialDataWidget::updateSelectedTobaccoInfo()
 {
     if (m_selectedTobacco.getId() != -1) {
@@ -822,22 +824,33 @@ void SingleMaterialDataWidget::on_importTgBigDataButton_clicked()
     // formLayout->addRow(tr("平行样编号:"), &parallelNoSpinBox);
     
     layout->addLayout(formLayout);
-    
+
+    // 打开样本信息对话框前先自动弹出导入属性编辑（与基础信息填写流程一致）
+    QJsonObject localImportAttrs_tgbig = m_importAttributes;
+    {
+        ImportAttributesDialog attrDlg(this);
+        attrDlg.setAttributes(localImportAttrs_tgbig);
+        if (attrDlg.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("已取消导入。"), 3000);
+            return;
+        }
+        localImportAttrs_tgbig = attrDlg.attributes();
+    }
     QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttonBox, &QDialogButtonBox::accepted, &inputDialog, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, &inputDialog, &QDialog::reject);
     layout->addWidget(buttonBox);
-    
+
     if (inputDialog.exec() != QDialog::Accepted) {
         emit statusMessage(tr("用户取消了操作。"), 3000);
         return;
     }
 
     // 3. 获取用户输入的信息（烟牌号统一设为“大热重”）
+    m_importAttributes = localImportAttrs_tgbig;
     QString projectName = QStringLiteral("大热重");
     QString batchCode = batchCodeEdit.text();
     QDate detectDate = detectDateEdit.date();
-    // int parallelNo = parallelNoSpinBox.value();
 
     // 如果已经有一个导入进程在运行，先停止它
     if (m_tgBigDataImportWorker && m_tgBigDataImportWorker->isRunning()) {
@@ -920,8 +933,8 @@ void SingleMaterialDataWidget::on_importTgBigDataButton_clicked()
     }
     
     // 设置工作线程参数并启动
-    // m_tgBigDataImportWorker->setParameters(dirPath, m_appInitializer);
     m_tgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, detectDate, useCustomColumns, temperatureColumn, dataColumn, m_appInitializer);
+    m_tgBigDataImportWorker->setImportAttributes(m_importAttributes);
     m_tgBigDataImportWorker->start();
     
     emit statusMessage(tr("正在后台导入大热重数据..."), 3000);
@@ -1053,6 +1066,17 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     batchCodeEdit.setText(defaultBatchCode);
     formLayout->addRow(tr("批次代码:"), &batchCodeEdit);
     layout->addLayout(formLayout);
+
+    QJsonObject localImportAttrs_proctgbig = m_importAttributes;
+    {
+        ImportAttributesDialog attrDlg(this);
+        attrDlg.setAttributes(localImportAttrs_proctgbig);
+        if (attrDlg.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("已取消导入。"), 3000);
+            return;
+        }
+        localImportAttrs_proctgbig = attrDlg.attributes();
+    }
     QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     layout->addWidget(buttonBox);
     connect(buttonBox, &QDialogButtonBox::accepted, &inputDialog, &QDialog::accept);
@@ -1061,6 +1085,7 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
         emit statusMessage(tr("已取消导入操作。"), 3000);
         return;
     }
+    m_importAttributes = localImportAttrs_proctgbig;
     const QString projectName = projectNameEdit.text().trimmed();
     const QString batchCode = batchCodeEdit.text().trimmed();
     if (projectName.isEmpty() || batchCode.isEmpty()) {
@@ -1150,6 +1175,7 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     
     // 设置工作线程参数并启动（传递用户确认的项目与批次，用于覆盖解析值）
     m_processTgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, useCustomColumns, temperatureColumn, dataColumn, m_appInitializer);
+    m_processTgBigDataImportWorker->setImportAttributes(m_importAttributes);
 
     m_processTgBigDataImportWorker->start();
     
@@ -1277,23 +1303,34 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
     // formLayout->addRow(tr("平行样编号:"), &parallelNoSpinBox);
     
     layout->addLayout(formLayout);
-    
+
+    QJsonObject localImportAttrs_tgsmall = m_importAttributes;
+    {
+        ImportAttributesDialog attrDlg(this);
+        attrDlg.setAttributes(localImportAttrs_tgsmall);
+        if (attrDlg.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("已取消导入。"), 3000);
+            return;
+        }
+        localImportAttrs_tgsmall = attrDlg.attributes();
+    }
     QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttonBox, &QDialogButtonBox::accepted, &inputDialog, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, &inputDialog, &QDialog::reject);
     layout->addWidget(buttonBox);
-    
+
     if (inputDialog.exec() != QDialog::Accepted) {
         emit statusMessage(tr("用户取消了操作。"), 3000);
         return;
     }
-    
+
     // 4. 获取用户输入的信息（烟牌号统一设为“小热重”）
+    m_importAttributes = localImportAttrs_tgsmall;
     QString projectName = QStringLiteral("小热重");
     QString batchCode = batchCodeEdit.text();
     QDate detectDate = detectDateEdit.date();
     int parallelNo = parallelNoSpinBox.value();
-    
+
     // 5. 如果已经有一个导入进程在运行，先停止它
     if (m_tgSmallDataImportWorker && m_tgSmallDataImportWorker->isRunning()) {
         m_tgSmallDataImportWorker->stop();
@@ -1383,7 +1420,8 @@ void SingleMaterialDataWidget::on_importTgSmallDataButton_clicked()
     // 8. 设置工作线程参数
     m_tgSmallDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo,
                                              useCustomColumns, xColumn, yColumn, m_appInitializer);
-    
+    m_tgSmallDataImportWorker->setImportAttributes(m_importAttributes);
+
     // 9. 启动工作线程
     m_tgSmallDataImportWorker->start();
     
@@ -1507,6 +1545,16 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
 
     layout->addLayout(formLayout);
 
+    QJsonObject localImportAttrs_tgsmallraw = m_importAttributes;
+    {
+        ImportAttributesDialog attrDlg(this);
+        attrDlg.setAttributes(localImportAttrs_tgsmallraw);
+        if (attrDlg.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("已取消导入。"), 3000);
+            return;
+        }
+        localImportAttrs_tgsmallraw = attrDlg.attributes();
+    }
     QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttonBox, &QDialogButtonBox::accepted, &inputDialog, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, &inputDialog, &QDialog::reject);
@@ -1517,6 +1565,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
         return;
     }
 
+    m_importAttributes = localImportAttrs_tgsmallraw;
     QString projectName = QStringLiteral("小热重（原始数据）");
     QString batchCode = batchCodeEdit.text();
     QDate detectDate = detectDateEdit.date();
@@ -1602,6 +1651,7 @@ void SingleMaterialDataWidget::on_importTgSmallRawDataButton_clicked()
 
     m_tgSmallRawDataImportWorker->setParameters(filePath, projectName, batchCode, detectDate, parallelNo,
                                                 useCustomColumns, xColumn, yColumn, m_appInitializer);
+    m_tgSmallRawDataImportWorker->setImportAttributes(m_importAttributes);
     m_tgSmallRawDataImportWorker->start();
 
     emit statusMessage(tr("正在后台导入小热重（原始数据）..."), 3000);
@@ -1652,24 +1702,35 @@ void SingleMaterialDataWidget::on_importChromatographDataButton_clicked()
     // formLayout->addRow(tr("平行样编号:"), &parallelNoSpinBox);
     
     layout->addLayout(formLayout);
-    
+
+    QJsonObject localImportAttrs_chrom = m_importAttributes;
+    {
+        ImportAttributesDialog attrDlg(this);
+        attrDlg.setAttributes(localImportAttrs_chrom);
+        if (attrDlg.exec() != QDialog::Accepted) {
+            emit statusMessage(tr("已取消导入。"), 3000);
+            return;
+        }
+        localImportAttrs_chrom = attrDlg.attributes();
+    }
     QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttonBox, &QDialogButtonBox::accepted, &inputDialog, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, &inputDialog, &QDialog::reject);
     layout->addWidget(buttonBox);
-    
+
     if (inputDialog.exec() != QDialog::Accepted) {
         emit statusMessage(tr("用户取消了操作。"), 3000);
         return;
     }
-    
+
     // 获取用户输入的信息（烟牌号统一设为“色谱”）
+    m_importAttributes = localImportAttrs_chrom;
     projectName = QStringLiteral("色谱");
     batchCode = batchCodeEdit.text();
     QDate detectDate = detectDateEdit.date();
     shortCode = shortCodeEdit.text();
     parallelNo = parallelNoSpinBox.value();
-    
+
     // 如果已经有一个导入进程在运行，先停止它
     if (m_chromatographDataImportWorker && m_chromatographDataImportWorker->isRunning()) {
         m_chromatographDataImportWorker->stop();
@@ -1752,6 +1813,7 @@ void SingleMaterialDataWidget::on_importChromatographDataButton_clicked()
     
     // 设置工作线程参数并启动
     m_chromatographDataImportWorker->setParameters(dirPath, projectName, batchCode, detectDate, shortCode, parallelNo, m_appInitializer);
+    m_chromatographDataImportWorker->setImportAttributes(m_importAttributes);
     m_chromatographDataImportWorker->start();
 }
 
@@ -1762,4 +1824,93 @@ void SingleMaterialDataWidget::refreshCharts()
     if (m_selectedTobacco.getId() != -1) {
         loadSensorDataForSelectedTobacco();
     }
+}
+
+void SingleMaterialDataWidget::on_editImportAttributesButton_clicked()
+{
+    ImportAttributesDialog dlg(this);
+    dlg.setAttributes(m_importAttributes);
+    if (dlg.exec() == QDialog::Accepted) {
+        m_importAttributes = dlg.attributes();
+        emit statusMessage(tr("导入属性已更新，下次导入时将附加到每条数据。"), 3000);
+    }
+}
+
+void SingleMaterialDataWidget::onTableViewContextMenu(const QPoint& pos)
+{
+    QModelIndex index = ui->tableView->indexAt(pos);
+    if (!index.isValid()) return;
+
+    QMenu menu(this);
+    QAction* viewAttrAction = menu.addAction(tr("查看导入属性"));
+    QAction* chosen = menu.exec(ui->tableView->viewport()->mapToGlobal(pos));
+
+    if (chosen != viewAttrAction) return;
+
+    // 从模型中直接取该行的 SingleTobaccoSampleData，获取 ID
+    const SingleTobaccoSampleData sample = m_tableModel->getSampleAt(index.row());
+    const int sampleId = sample.getId();
+    if (sampleId <= 0) return;
+
+    QSqlDatabase db = DatabaseConnector::getInstance().getDatabase();
+    if (!db.isOpen()) {
+        QMessageBox::warning(this, tr("数据库错误"), tr("数据库连接未打开。"));
+        return;
+    }
+    // 确保本连接使用 utf8mb4，防止中文乱码
+    { QSqlQuery setNames(db); setNames.exec("SET NAMES utf8mb4"); }
+
+    // 先检测 import_attributes 列是否存在（任意一张表检测即可）
+    QSqlQuery checkQ(db);
+    bool colExists = false;
+    if (checkQ.exec("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                    "AND TABLE_NAME = 'tg_big_data' AND COLUMN_NAME = 'import_attributes'")) {
+        colExists = checkQ.next();
+    }
+
+    if (!colExists) {
+        QMessageBox::information(this, tr("提示"),
+            tr("数据库尚未添加导入属性字段。\n\n请执行以下迁移 SQL 后重新导入数据：\n"
+               "sql/migrations/add_import_attributes.sql"));
+        return;
+    }
+
+    QJsonObject attrs;
+    bool found = false;
+    // 依次尝试各数据表（优先大热重）
+    const QStringList tables = {"tg_big_data", "tg_small_data", "tg_small_raw_data", "process_tg_big_data", "chromatography_data"};
+    for (const QString& tbl : tables) {
+        QSqlQuery q(db);
+        q.prepare(QString("SELECT import_attributes FROM %1 "
+                          "WHERE sample_id = :sid AND import_attributes IS NOT NULL "
+                          "ORDER BY id DESC LIMIT 1").arg(tbl));
+        q.bindValue(":sid", sampleId);
+        if (q.exec() && q.next()) {
+            // 用 toByteArray() 直接拿原始字节，避免 Qt 字符集转换导致 UTF-8 JSON 乱码
+            const QByteArray attrBytes = q.value(0).toByteArray();
+            if (!attrBytes.isEmpty()) {
+                QJsonDocument doc = QJsonDocument::fromJson(attrBytes);
+                if (doc.isNull() || !doc.isObject()) {
+                    doc = QJsonDocument::fromJson(QString::fromLatin1(attrBytes).toUtf8());
+                }
+                if (!doc.isNull() && doc.isObject()) {
+                    attrs = doc.object();
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    ImportAttributesDialog viewDlg(this);
+    viewDlg.setWindowTitle(tr("导入属性（只读）— 样本：%1").arg(sample.getSampleName()));
+    if (found && !attrs.isEmpty()) {
+        viewDlg.setAttributes(attrs);
+    } else {
+        // 列存在但该样本没有属性数据（导入时未设置）
+        viewDlg.setAttributes(SampleAttributeDialog::defaultAttributes());
+        viewDlg.setWindowTitle(tr("导入属性（只读，该样本暂无属性记录）— 样本：%1").arg(sample.getSampleName()));
+    }
+    viewDlg.setReadOnly(true);
+    viewDlg.exec();
 }

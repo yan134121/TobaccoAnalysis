@@ -12,7 +12,7 @@
 #include <QWaitCondition> // 用于线程等待
 #include <QSqlDatabase>
 #include <QDate>
-
+#include <QJsonObject>
 
 #include "SingleTobaccoSampleData.h"
 #include "TgBigData.h"
@@ -52,6 +52,7 @@ public:
                        int temperatureColumn1Based,
                        int dataColumn1Based,
                        AppInitializer* appInitializer);
+    void setImportAttributes(const QJsonObject& attrs);
     void stop();
 
 protected:
@@ -72,6 +73,7 @@ private:
     QString m_batchCode;
     QDate m_detectDate;
     int m_parallelNo;
+    QJsonObject m_importAttributes;
 
     // 可选列覆盖
     bool m_useCustomColumns = false;

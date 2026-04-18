@@ -385,6 +385,22 @@
     <string>导入工序大热重</string>
    </property>
   </widget>
+  <widget class="QPushButton" name="editImportAttributesButton">
+   <property name="geometry">
+    <rect>
+     <x>140</x>
+     <y>495</y>
+     <width>151</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>编辑导入属性</string>
+   </property>
+   <property name="toolTip">
+    <string>设置本次导入数据的编码、年份、产地等属性信息</string>
+   </property>
+  </widget>
   <zorder>queryButton</zorder>
   <zorder>resetQueryButton</zorder>
   <zorder>importButton</zorder>
@@ -414,6 +430,7 @@
   <zorder>importTgSmallRawDataButton</zorder>
   <zorder>importChromatographDataButton</zorder>
   <zorder>importProcessTgBigDataButton</zorder>
+  <zorder>editImportAttributesButton</zorder>
   <zorder>tableView</zorder>
  </widget>
  <resources/>

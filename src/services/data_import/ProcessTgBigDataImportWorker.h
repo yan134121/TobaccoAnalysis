@@ -5,6 +5,7 @@
 #include <QMutex>
 #include <QString>
 #include <QSqlDatabase>
+#include <QJsonObject>
 
 #include "core/entities/ProcessTgBigData.h"
 #include "core/entities/SingleTobaccoSampleData.h"
@@ -36,6 +37,7 @@ public:
                        int temperatureColumn1Based,
                        int dataColumn1Based,
                        AppInitializer* appInitializer);
+    void setImportAttributes(const QJsonObject& attrs);
     void stop();
 
     QMap<QString, QStringList> buildGroupedCsvPaths(const QString& directoryPath);
@@ -64,6 +66,8 @@ private:
     QString m_batchCode;
     QString m_shortCode;
     int m_parallelNo;
+
+    QJsonObject m_importAttributes;
 
     // 可选的列映射覆盖（用于按用户指定列提取温度/重量）
     bool m_useCustomColumns = false;

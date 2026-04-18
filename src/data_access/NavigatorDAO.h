@@ -92,12 +92,14 @@ public:
     bool renameShortCodeForDataType(const QString& oldShortCode, const QString& newShortCode, const QString& dataType, QString& error);
 
 
-    QList<QString> fetchProjectsForProcessData(QString& error);
+    QList<QString> fetchProjectsForProcessData(QString& error,
+                                               const QJsonObject& attributeFilter = QJsonObject());
 
+    QList<QPair<QString, int>> fetchBatchesForProcessProject(const QString& projectName, QString& error,
+                                                               const QJsonObject& attributeFilter = QJsonObject());
 
-    QList<QPair<QString, int>> fetchBatchesForProcessProject(const QString& projectName, QString& error);
-
-    QList<SampleLeafInfo> fetchSamplesForProcessBatch(const QString& batchCode, QString& error);
+    QList<SampleLeafInfo> fetchSamplesForProcessBatch(const QString& batchCode, QString& error,
+                                                      const QJsonObject& attributeFilter = QJsonObject());
     
 
     bool deleteProjectCascade(const QString& projectName, bool processBranch, QString& error);

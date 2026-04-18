@@ -864,25 +864,41 @@ bool NavigatorDAO::renameShortCodeForDataType(const QString& oldShortCode, const
 }
 
 // 【新增】获取工序大热重数据的所有项目名
-QList<QString> NavigatorDAO::fetchProjectsForProcessData(QString& error)
+QList<QString> NavigatorDAO::fetchProjectsForProcessData(QString& error, const QJsonObject& attributeFilter)
 {
     QList<QString> projects;
     QSqlQuery query(DatabaseManager::instance().database());
-    
-    // 查询存在工序大热重数据的项目名
-    QString sql = R"(
-        SELECT DISTINCT s.project_name
-        FROM single_tobacco_sample s
-        JOIN process_tg_big_data d ON s.id = d.sample_id
-        ORDER BY s.project_name
-    )";
-    
-    query.prepare(sql);
+
+    QString sql;
+    if (attributeFilterHasCriteria(attributeFilter)) {
+        const auto clause = makeAttributeFilterSql(attributeFilter, QStringLiteral("s"), QStringLiteral("b"),
+                                                   QStringLiteral("d"));
+        sql = QStringLiteral(
+            "SELECT DISTINCT s.project_name "
+            "FROM single_tobacco_sample s "
+            "JOIN tobacco_batch b ON s.batch_id = b.id "
+            "JOIN process_tg_big_data d ON s.id = d.sample_id "
+            "WHERE 1=1");
+        sql += clause.first;
+        sql += QStringLiteral(" ORDER BY s.project_name");
+        query.prepare(sql);
+        for (auto it = clause.second.constBegin(); it != clause.second.constEnd(); ++it) {
+            query.bindValue(it.key(), it.value());
+        }
+    } else {
+        sql = QStringLiteral(
+            "SELECT DISTINCT s.project_name "
+            "FROM single_tobacco_sample s "
+            "JOIN process_tg_big_data d ON s.id = d.sample_id "
+            "ORDER BY s.project_name");
+        query.prepare(sql);
+    }
+
     if (!query.exec()) {
         error = query.lastError().text();
         return projects;
     }
-    
+
     while (query.next()) {
         projects.append(query.value(0).toString());
     }
@@ -890,28 +906,40 @@ QList<QString> NavigatorDAO::fetchProjectsForProcessData(QString& error)
 }
 
 // 【新增】获取指定工序大热重项目的所有批次
-QList<QPair<QString, int>> NavigatorDAO::fetchBatchesForProcessProject(const QString& projectName, QString& error)
+QList<QPair<QString, int>> NavigatorDAO::fetchBatchesForProcessProject(const QString& projectName, QString& error,
+                                                                       const QJsonObject& attributeFilter)
 {
     QList<QPair<QString, int>> batches;
     QSqlQuery query(DatabaseManager::instance().database());
-    
-    QString sql = R"(
-        SELECT DISTINCT b.batch_code, b.id
-        FROM tobacco_batch b
-        JOIN single_tobacco_sample s ON s.batch_id = b.id
-        JOIN process_tg_big_data d ON s.id = d.sample_id
-        WHERE s.project_name = :project_name
-        ORDER BY b.batch_code
-    )";
-    
+
+    QString sql = QStringLiteral(
+        "SELECT DISTINCT b.batch_code, b.id "
+        "FROM tobacco_batch b "
+        "JOIN single_tobacco_sample s ON s.batch_id = b.id "
+        "JOIN process_tg_big_data d ON s.id = d.sample_id "
+        "WHERE s.project_name = :project_name");
+
+    QMap<QString, QVariant> attrBinds;
+    if (attributeFilterHasCriteria(attributeFilter)) {
+        const auto clause = makeAttributeFilterSql(attributeFilter, QStringLiteral("s"), QStringLiteral("b"),
+                                                   QStringLiteral("d"));
+        sql += clause.first;
+        attrBinds = clause.second;
+    }
+
+    sql += QStringLiteral(" ORDER BY b.batch_code");
+
     query.prepare(sql);
-    query.bindValue(":project_name", projectName);
-    
+    query.bindValue(QStringLiteral(":project_name"), projectName);
+    for (auto it = attrBinds.constBegin(); it != attrBinds.constEnd(); ++it) {
+        query.bindValue(it.key(), it.value());
+    }
+
     if (!query.exec()) {
         error = query.lastError().text();
         return batches;
     }
-    
+
     while (query.next()) {
         batches.append({query.value(0).toString(), query.value(1).toInt()});
     }
@@ -919,29 +947,41 @@ QList<QPair<QString, int>> NavigatorDAO::fetchBatchesForProcessProject(const QSt
 }
 
 // 【新增】获取指定工序大热重批次的所有样本（ShortCode, ParallelNo）
-QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchSamplesForProcessBatch(const QString& batchCode, QString& error)
+QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchSamplesForProcessBatch(const QString& batchCode, QString& error,
+                                                                              const QJsonObject& attributeFilter)
 {
     QList<SampleLeafInfo> samples;
     QSqlQuery query(DatabaseManager::instance().database());
-    
-    QString sql = R"(
-        SELECT DISTINCT s.id, s.short_code, s.parallel_no, s.project_name, b.batch_code,
-               COALESCE(s.sample_name, '') AS sample_name
-        FROM single_tobacco_sample s
-        JOIN tobacco_batch b ON s.batch_id = b.id
-        JOIN process_tg_big_data d ON s.id = d.sample_id
-        WHERE b.batch_code = :batch_code
-        ORDER BY s.short_code, s.parallel_no
-    )";
-    
+
+    QString sql = QStringLiteral(
+        "SELECT DISTINCT s.id, s.short_code, s.parallel_no, s.project_name, b.batch_code, "
+        "COALESCE(s.sample_name, '') AS sample_name "
+        "FROM single_tobacco_sample s "
+        "JOIN tobacco_batch b ON s.batch_id = b.id "
+        "JOIN process_tg_big_data d ON s.id = d.sample_id "
+        "WHERE b.batch_code = :batch_code");
+
+    QMap<QString, QVariant> attrBinds;
+    if (attributeFilterHasCriteria(attributeFilter)) {
+        const auto clause = makeAttributeFilterSql(attributeFilter, QStringLiteral("s"), QStringLiteral("b"),
+                                                   QStringLiteral("d"));
+        sql += clause.first;
+        attrBinds = clause.second;
+    }
+
+    sql += QStringLiteral(" ORDER BY s.short_code, s.parallel_no");
+
     query.prepare(sql);
-    query.bindValue(":batch_code", batchCode);
-    
+    query.bindValue(QStringLiteral(":batch_code"), batchCode);
+    for (auto it = attrBinds.constBegin(); it != attrBinds.constEnd(); ++it) {
+        query.bindValue(it.key(), it.value());
+    }
+
     if (!query.exec()) {
         error = query.lastError().text();
         return samples;
     }
-    
+
     while (query.next()) {
         SampleLeafInfo info;
         info.id = query.value("id").toInt();

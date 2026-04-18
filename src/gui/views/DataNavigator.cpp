@@ -209,6 +209,7 @@ void DataNavigator::setupTree()
     initRootInfo(m_smallTgRoot, "小热重");
     initRootInfo(m_smallTgRawRoot, "小热重（原始数据）");
     initRootInfo(m_chromRoot, "色谱");
+    initRootInfo(m_processDataRoot, QStringLiteral("工序大热重"));
 
     // 创建"打开的窗口"节点
     m_openSamplesRoot = new QTreeWidgetItem(m_workspaceRoot, {"打开的窗口"});
@@ -709,9 +710,11 @@ void DataNavigator::onItemExpanded(QTreeWidgetItem *item)
     // 根据当前节点的类型，决定下一步要加载什么
     switch (info.type) {
         case NavigatorNodeInfo::DataType:
-            // 如果是大热重/小热重/色谱的根节点，加载 ShortCode
+            // 如果是大热重/小热重/色谱的根节点，加载 ShortCode（工序大热重根由 refreshProcessData 填充，勿走短码）
             if (info.dataType == "大热重" || info.dataType == "小热重" || info.dataType == "小热重（原始数据）" || info.dataType == "色谱") {
                 loadShortCodesForType(item, info.dataType);
+            } else if (info.dataType == QStringLiteral("工序大热重")) {
+                refreshProcessData();
             }
             break;
         case NavigatorNodeInfo::ShortCode:
@@ -802,7 +805,9 @@ void DataNavigator::loadBatchesForProcessProject(QTreeWidgetItem* projectItem)
 {
     NavigatorNodeInfo parentInfo = projectItem->data(0, Qt::UserRole).value<NavigatorNodeInfo>();
     QString error;
-    auto batches = m_dao.fetchBatchesForProcessProject(parentInfo.projectName, error);
+    const QJsonObject processAttrFilter =
+        m_navigatorAttributeFilters.value(QStringLiteral("工序大热重"), QJsonObject());
+    auto batches = m_dao.fetchBatchesForProcessProject(parentInfo.projectName, error, processAttrFilter);
     if (!error.isEmpty()) {
         DEBUG_LOG << "Error loading batches for process project: " << error;
         return;
@@ -825,8 +830,9 @@ void DataNavigator::loadSamplesForProcessBatch(QTreeWidgetItem* batchItem)
 {
     NavigatorNodeInfo parentInfo = batchItem->data(0, Qt::UserRole).value<NavigatorNodeInfo>();
     QString error;
-    // fetchSamplesForProcessBatch 只需要 batchCode
-    auto samples = m_dao.fetchSamplesForProcessBatch(parentInfo.batchCode, error);
+    const QJsonObject processAttrFilter =
+        m_navigatorAttributeFilters.value(QStringLiteral("工序大热重"), QJsonObject());
+    auto samples = m_dao.fetchSamplesForProcessBatch(parentInfo.batchCode, error, processAttrFilter);
     
     if (!error.isEmpty()) {
         DEBUG_LOG << "Error loading samples for process batch: " << error;
@@ -940,7 +946,11 @@ void DataNavigator::refreshNode(QTreeWidgetItem* item)
             loadParallelSamplesForShortCode(item);
             break;
         case NavigatorNodeInfo::DataType:
-            // 大热重/小热重/色谱：根节点 -> ShortCode
+            // 工序大热重根节点：项目/批次树，不走短码列表
+            if (info.dataType == QStringLiteral("工序大热重")) {
+                refreshProcessData();
+                break;
+            }
             qDeleteAll(item->takeChildren());
             loadShortCodesForType(item, info.dataType);
             break;
@@ -1053,33 +1063,55 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
                 });
             }
 
-            if (info.type == NavigatorNodeInfo::DataType && item == m_bigTgRoot) {
-                menu.addSeparator();
-                QAction* attrFilterAct = menu.addAction(tr("属性分类…"));
-                QAction* clearAttrAct = nullptr;
-                if (NavigatorDAO::attributeFilterHasCriteria(
-                        m_navigatorAttributeFilters.value(QStringLiteral("大热重")))) {
-                    clearAttrAct = menu.addAction(tr("清除属性分类"));
+            {
+                QString attrDataType;
+                if (item == m_bigTgRoot) {
+                    attrDataType = QStringLiteral("大热重");
+                } else if (item == m_smallTgRoot) {
+                    attrDataType = QStringLiteral("小热重");
+                } else if (item == m_smallTgRawRoot) {
+                    attrDataType = QStringLiteral("小热重（原始数据）");
+                } else if (item == m_chromRoot) {
+                    attrDataType = QStringLiteral("色谱");
+                } else if (item == m_processDataRoot) {
+                    attrDataType = QStringLiteral("工序大热重");
                 }
-                connect(attrFilterAct, &QAction::triggered, this, [this, item]() {
-                    NavigatorAttributeFilterDialog dlg(QStringLiteral("大热重"), this);
-                    dlg.setFilter(m_navigatorAttributeFilters.value(QStringLiteral("大热重")));
-                    if (dlg.exec() != QDialog::Accepted) {
-                        return;
+                if (!attrDataType.isEmpty()) {
+                    menu.addSeparator();
+                    QAction* attrFilterAct = menu.addAction(tr("属性分类…"));
+                    QAction* clearAttrAct = nullptr;
+                    if (NavigatorDAO::attributeFilterHasCriteria(
+                            m_navigatorAttributeFilters.value(attrDataType))) {
+                        clearAttrAct = menu.addAction(tr("清除属性分类"));
                     }
-                    const QJsonObject f = dlg.filter();
-                    if (f.isEmpty()) {
-                        m_navigatorAttributeFilters.remove(QStringLiteral("大热重"));
-                    } else {
-                        m_navigatorAttributeFilters.insert(QStringLiteral("大热重"), f);
-                    }
-                    refreshNode(item);
-                });
-                if (clearAttrAct) {
-                    connect(clearAttrAct, &QAction::triggered, this, [this, item]() {
-                        m_navigatorAttributeFilters.remove(QStringLiteral("大热重"));
-                        refreshNode(item);
+                    connect(attrFilterAct, &QAction::triggered, this, [this, item, attrDataType]() {
+                        NavigatorAttributeFilterDialog dlg(attrDataType, this);
+                        dlg.setFilter(m_navigatorAttributeFilters.value(attrDataType));
+                        if (dlg.exec() != QDialog::Accepted) {
+                            return;
+                        }
+                        const QJsonObject f = dlg.filter();
+                        if (f.isEmpty()) {
+                            m_navigatorAttributeFilters.remove(attrDataType);
+                        } else {
+                            m_navigatorAttributeFilters.insert(attrDataType, f);
+                        }
+                        if (attrDataType == QStringLiteral("工序大热重")) {
+                            refreshProcessData();
+                        } else {
+                            refreshNode(item);
+                        }
                     });
+                    if (clearAttrAct) {
+                        connect(clearAttrAct, &QAction::triggered, this, [this, item, attrDataType]() {
+                            m_navigatorAttributeFilters.remove(attrDataType);
+                            if (attrDataType == QStringLiteral("工序大热重")) {
+                                refreshProcessData();
+                            } else {
+                                refreshNode(item);
+                            }
+                        });
+                    }
                 }
             }
 
@@ -1511,7 +1543,9 @@ void DataNavigator::refreshProcessData()
 
     // 获取工序数据下的所有项目名
     QString error;
-    auto projects = m_dao.fetchProjectsForProcessData(error);
+    const QJsonObject processAttrFilter =
+        m_navigatorAttributeFilters.value(QStringLiteral("工序大热重"), QJsonObject());
+    auto projects = m_dao.fetchProjectsForProcessData(error, processAttrFilter);
     if (!error.isEmpty()) { 
         LOG_WARNING(QString("Failed to fetch projects for process data: %1").arg(error));
         return; 

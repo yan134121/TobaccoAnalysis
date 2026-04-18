@@ -617,7 +617,8 @@ QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchParallelSamplesForShortCo
     // 如果数据表有特定时间戳，也可以取
     
     QString sql = QString(R"(
-        SELECT DISTINCT s.id, s.parallel_no, s.detect_date, s.created_at, s.project_name, b.batch_code
+        SELECT DISTINCT s.id, s.parallel_no, s.detect_date, s.created_at, s.project_name, b.batch_code,
+               COALESCE(s.sample_name, '') AS sample_name
         FROM single_tobacco_sample s
         JOIN tobacco_batch b ON s.batch_id = b.id
         JOIN %1 d ON s.id = d.sample_id
@@ -652,10 +653,65 @@ QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchParallelSamplesForShortCo
         } else {
             info.timestamp = "N/A";
         }
+
+        info.sampleName = query.value("sample_name").toString();
         
         samples.append(info);
     }
     return samples;
+}
+
+bool NavigatorDAO::renameShortCodeForDataType(const QString& oldShortCode, const QString& newShortCode,
+                                              const QString& dataType, QString& error)
+{
+    const QString trimmedNew = newShortCode.trimmed();
+    if (trimmedNew.isEmpty()) {
+        error = QStringLiteral("新短码不能为空");
+        return false;
+    }
+    if (trimmedNew == oldShortCode.trimmed()) {
+        error = QStringLiteral("短码未改变");
+        return false;
+    }
+
+    QString tableName;
+    if (dataType == QStringLiteral("大热重")) {
+        tableName = QStringLiteral("tg_big_data");
+    } else if (dataType == QStringLiteral("小热重")) {
+        tableName = QStringLiteral("tg_small_data");
+    } else if (dataType == QStringLiteral("小热重（原始数据）")) {
+        tableName = QStringLiteral("tg_small_raw_data");
+    } else if (dataType == QStringLiteral("色谱")) {
+        tableName = QStringLiteral("chromatography_data");
+    } else {
+        error = QStringLiteral("该数据类型不支持重命名短码");
+        return false;
+    }
+
+    QSqlDatabase db = DatabaseManager::instance().database();
+    if (!db.isOpen()) {
+        error = QStringLiteral("数据库未连接");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    const QString sql = QStringLiteral(
+        "UPDATE single_tobacco_sample s "
+        "JOIN %1 d ON s.id = d.sample_id "
+        "SET s.short_code = :new_sc "
+        "WHERE s.short_code = :old_sc"
+    ).arg(tableName);
+
+    query.prepare(sql);
+    query.bindValue(QStringLiteral(":new_sc"), trimmedNew);
+    query.bindValue(QStringLiteral(":old_sc"), oldShortCode);
+
+    if (!query.exec()) {
+        error = query.lastError().text();
+        DEBUG_LOG << "NavigatorDAO::renameShortCodeForDataType failed:" << error;
+        return false;
+    }
+    return true;
 }
 
 // 【新增】获取工序大热重数据的所有项目名
@@ -720,7 +776,8 @@ QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchSamplesForProcessBatch(co
     QSqlQuery query(DatabaseManager::instance().database());
     
     QString sql = R"(
-        SELECT DISTINCT s.id, s.short_code, s.parallel_no, s.project_name, b.batch_code
+        SELECT DISTINCT s.id, s.short_code, s.parallel_no, s.project_name, b.batch_code,
+               COALESCE(s.sample_name, '') AS sample_name
         FROM single_tobacco_sample s
         JOIN tobacco_batch b ON s.batch_id = b.id
         JOIN process_tg_big_data d ON s.id = d.sample_id
@@ -744,7 +801,8 @@ QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchSamplesForProcessBatch(co
         info.projectName = query.value("project_name").toString();
         info.batchCode = query.value("batch_code").toString();
         // 工序数据不需要时间戳显示，置空
-        info.timestamp = ""; 
+        info.timestamp = "";
+        info.sampleName = query.value("sample_name").toString();
         samples.append(info);
     }
     return samples;

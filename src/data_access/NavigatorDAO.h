@@ -77,8 +77,12 @@ public:
         QString shortCode;
         QString projectName; //
         QString batchCode;   //
+        QString sampleName;  // 自定义显示名（空则使用默认格式）
     };
     QList<SampleLeafInfo> fetchParallelSamplesForShortCodeAndType(const QString& shortCode, const QString& dataType, QString& error);
+
+    /// 将当前数据类型下、该短码对应的所有样本行的 short_code 更新为新值（仅更新在对应业务表中存在数据的样本）
+    bool renameShortCodeForDataType(const QString& oldShortCode, const QString& newShortCode, const QString& dataType, QString& error);
 
 
     QList<QString> fetchProjectsForProcessData(QString& error);

@@ -28,8 +28,25 @@
 #include <QApplication>
 #include <QCursor>
 #include <QSignalBlocker>
+#include <QInputDialog>
+#include <QLineEdit>
+#include "data_access/SingleTobaccoSampleDAO.h"
 
+namespace {
 
+QString formatParallelSampleDisplay(const QString& shortCode, int parallelNo,
+                                    const QString& timestamp, const QString& sampleName)
+{
+    if (!sampleName.trimmed().isEmpty()) {
+        return sampleName.trimmed();
+    }
+    if (!timestamp.isEmpty()) {
+        return QStringLiteral("%1(%2)-%3").arg(shortCode).arg(parallelNo).arg(timestamp);
+    }
+    return QStringLiteral("%1(%2)").arg(shortCode).arg(parallelNo);
+}
+
+} // namespace
 
 DataNavigator::DataNavigator(QWidget *parent) : QTreeWidget(parent)
 {
@@ -750,12 +767,9 @@ void DataNavigator::loadParallelSamplesForShortCode(QTreeWidgetItem* shortCodeIt
     QSet<int> selectedForType = SampleSelectionManager::instance()->selectedIdsByType(parentInfo.dataType);
 
     for (const auto& sample : samples) {
-        // 格式：short_code(parallel_no)-时间戳
-        QString text = QString("%1(%2)-%3")
-                       .arg(parentInfo.shortCode)
-                       .arg(sample.parallelNo)
-                       .arg(sample.timestamp);
-        
+        const QString text = formatParallelSampleDisplay(
+            parentInfo.shortCode, sample.parallelNo, sample.timestamp, sample.sampleName);
+
         QTreeWidgetItem* item = new QTreeWidgetItem(shortCodeItem, {text});
         NavigatorNodeInfo info = parentInfo;
         info.type = NavigatorNodeInfo::Sample;
@@ -814,11 +828,9 @@ void DataNavigator::loadSamplesForProcessBatch(QTreeWidgetItem* batchItem)
     QSet<int> selectedForType = SampleSelectionManager::instance()->selectedIdsByType("工序大热重");
 
     for (const auto& sample : samples) {
-        // 格式：short_code(parallel_no)
-        QString text = QString("%1(%2)")
-                       .arg(sample.shortCode) // SampleLeafInfo 需包含 shortCode
-                       .arg(sample.parallelNo);
-        
+        const QString text = formatParallelSampleDisplay(
+            sample.shortCode, sample.parallelNo, sample.timestamp, sample.sampleName);
+
         QTreeWidgetItem* item = new QTreeWidgetItem(batchItem, {text});
         NavigatorNodeInfo info = parentInfo;
         info.type = NavigatorNodeInfo::Sample;
@@ -1088,6 +1100,27 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
 
             if (info.type == NavigatorNodeInfo::ShortCode && deletableSampleTypes.contains(info.dataType)) {
                 menu.addSeparator();
+                QAction* renameShortCodeAction = menu.addAction(tr("重命名短码"));
+                connect(renameShortCodeAction, &QAction::triggered, this, [this, info, item]() {
+                    bool ok = false;
+                    const QString newCode = QInputDialog::getText(
+                        this, tr("重命名短码"), tr("新短码:"), QLineEdit::Normal, info.shortCode, &ok);
+                    if (!ok) {
+                        return;
+                    }
+                    QString err;
+                    if (m_dao.renameShortCodeForDataType(info.shortCode, newCode, info.dataType, err)) {
+                        QTreeWidgetItem* parent = item->parent();
+                        if (parent) {
+                            refreshNode(parent);
+                        } else {
+                            refreshDataSource();
+                        }
+                    } else {
+                        QMessageBox::warning(this, tr("重命名失败"), err);
+                    }
+                });
+
                 QAction* delShortCode = menu.addAction(tr("删除短码"));
                 connect(delShortCode, &QAction::triggered, this, [this, info, item]() {
                     QString tip = tr("将删除【%1】下短码 [%2] 的所有数据。").arg(info.dataType, info.shortCode);
@@ -1124,6 +1157,36 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
                 connect(viewPropsAction, &QAction::triggered, this, [this, info]() {
                     showSampleProperties(info);
                 });
+
+                if (info.id > 0) {
+                    QAction* renameSampleAction = menu.addAction(tr("重命名"));
+                    connect(renameSampleAction, &QAction::triggered, this, [this, info, item]() {
+                        SingleTobaccoSampleDAO dao;
+                        SingleTobaccoSampleData data = dao.getById(info.id);
+                        if (data.getId() < 0) {
+                            QMessageBox::warning(this, tr("重命名失败"), tr("未找到样本记录。"));
+                            return;
+                        }
+                        bool ok = false;
+                        const QString currentName = data.getSampleName().trimmed();
+                        const QString newName = QInputDialog::getText(
+                            this, tr("重命名平行样"),
+                            tr("显示名称（留空则恢复默认格式）:"),
+                            QLineEdit::Normal, currentName, &ok);
+                        if (!ok) {
+                            return;
+                        }
+                        data.setSampleName(newName.trimmed());
+                        if (!dao.update(data)) {
+                            QMessageBox::warning(this, tr("重命名失败"), tr("无法保存到数据库。"));
+                            return;
+                        }
+                        QTreeWidgetItem* parent = item->parent();
+                        if (parent) {
+                            refreshNode(parent);
+                        }
+                    });
+                }
             }
 
             if (info.type == NavigatorNodeInfo::Sample && deletableSampleTypes.contains(info.dataType)) {

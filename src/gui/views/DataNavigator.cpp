@@ -244,6 +244,7 @@ void DataNavigator::refreshDataSource()
     
     // 确保UI更新
     this->update();
+    applyNavigationViewFilter();
     DEBUG_LOG;
 }
 
@@ -686,6 +687,8 @@ void DataNavigator::refreshNavigator()
     for (auto it = windowTitles.begin(); it != windowTitles.end(); ++it) {
         addOpenView(it.key());
     }
+
+    applyNavigationViewFilter();
 }
 
 
@@ -1511,7 +1514,36 @@ void DataNavigator::refreshProcessData()
     
     // 确保UI更新
     this->update();
+    applyNavigationViewFilter();
     DEBUG_LOG << "工序数据源刷新完成";
+}
+
+void DataNavigator::setNavigationViewFilter(const QString& dataTypeOrEmpty)
+{
+    m_navigationViewFilter = dataTypeOrEmpty.trimmed();
+    applyNavigationViewFilter();
+}
+
+void DataNavigator::applyNavigationViewFilter()
+{
+    const bool showAll = m_navigationViewFilter.isEmpty();
+    auto setBranch = [this, showAll](QTreeWidgetItem* root, const QString& typeKey) {
+        if (!root) {
+            return;
+        }
+        const bool visible = showAll || (m_navigationViewFilter == typeKey);
+        root->setHidden(!visible);
+    };
+
+    if (m_workspaceRoot) {
+        m_workspaceRoot->setHidden(false);
+    }
+
+    setBranch(m_bigTgRoot, QStringLiteral("大热重"));
+    setBranch(m_smallTgRoot, QStringLiteral("小热重"));
+    setBranch(m_smallTgRawRoot, QStringLiteral("小热重（原始数据）"));
+    setBranch(m_chromRoot, QStringLiteral("色谱"));
+    setBranch(m_processDataRoot, QStringLiteral("工序大热重"));
 }
 
 

@@ -44,6 +44,7 @@ TgSmallDifferenceWorkbench::TgSmallDifferenceWorkbench(int referenceSampleId,
       m_processingParams(params),
       m_dataTypeName(dataTypeName)
       {
+    setProperty("navigationFilterDataType", m_dataTypeName);
     setupUi();              //  先初始化界面
     calculateAndDisplay();  //  再填充数据
 }

@@ -17,8 +17,63 @@
 #include "DifferenceTableDialog.h"
 #include "gui/views/workbenches/TgBigDifferenceWorkbench.h"
 #include "views/workbenches/TgSmallDifferenceWorkbench.h"
+#include "views/workbenches/ChromatographDifferenceWorkbench.h"
+#include "views/workbenches/ProcessTgBigDifferenceWorkbench.h"
 
 #include "src/gui/views/SingleMaterialDataWidget.h"
+
+namespace {
+
+QString navigationFilterDataTypeForMdiWindow(QMdiSubWindow* window)
+{
+    if (!window) {
+        return {};
+    }
+
+    if (qobject_cast<TgBigDifferenceWorkbench*>(window)) {
+        return QStringLiteral("大热重");
+    }
+    if (auto* sw = qobject_cast<TgSmallDifferenceWorkbench*>(window)) {
+        const QString t = sw->property("navigationFilterDataType").toString();
+        return t.isEmpty() ? QStringLiteral("小热重") : t;
+    }
+    if (qobject_cast<ChromatographDifferenceWorkbench*>(window)) {
+        return QStringLiteral("色谱");
+    }
+    if (qobject_cast<ProcessTgBigDifferenceWorkbench*>(window)) {
+        return QStringLiteral("工序大热重");
+    }
+
+    QWidget* widget = window->widget();
+    if (!widget) {
+        return {};
+    }
+
+    if (qobject_cast<TgBigDataProcessDialog*>(widget)) {
+        return QStringLiteral("大热重");
+    }
+    if (auto* d = qobject_cast<TgSmallDataProcessDialog*>(widget)) {
+        QString t = d->property("dataTypeName").toString();
+        return t.isEmpty() ? QStringLiteral("小热重") : t;
+    }
+    if (qobject_cast<ChromatographDataProcessDialog*>(widget)) {
+        return QStringLiteral("色谱");
+    }
+    if (qobject_cast<ProcessTgBigDataProcessDialog*>(widget)) {
+        return QStringLiteral("工序大热重");
+    }
+    if (auto* sv = qobject_cast<SampleViewWindow*>(widget)) {
+        const QString t = sv->dataType();
+        return t.isEmpty() ? QString{} : t;
+    }
+    if (qobject_cast<SingleMaterialDataWidget*>(widget)) {
+        return {};
+    }
+
+    return {};
+}
+
+} // namespace
 
 // 包含所有在 .cpp 中使用到的 Qt Widget 类的头文件
 #include <QAction>
@@ -97,8 +152,11 @@ DEBUG_LOG << "m_navigator" << m_navigator;
     // 连接导航树的双击事件
     // connect(m_navigator, &QTreeWidget::itemDoubleClicked, this, &MainWindow::onSampleDoubleClicked);
     // 【新】连接 MDI 区域的信号，以更新导航树中的"打开的视图"列表
-    connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [=](QMdiSubWindow* window){
-        m_navigator->setActiveView(window);
+    connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [=](QMdiSubWindow* window) {
+        if (m_navigator) {
+            m_navigator->setActiveView(window);
+            m_navigator->setNavigationViewFilter(navigationFilterDataTypeForMdiWindow(window));
+        }
     });
     
     // 连接DataNavigator的requestOpenSampleViewWindow信号到MainWindow的onOpenSampleViewWindow槽

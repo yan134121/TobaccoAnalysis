@@ -63,6 +63,9 @@ public:
     void refreshDataSource();
     void refreshProcessData();
     void setupTree02();
+
+    /// 空字符串：显示全部数据类型根节点；否则仅显示「工作区」及与 dataTypeOrEmpty 匹配的一类数据（如「大热重」）
+    void setNavigationViewFilter(const QString& dataTypeOrEmpty);
     // 获取工作区根节点
     QTreeWidgetItem* getWorkspaceRoot() const { return m_workspaceRoot; }
     
@@ -171,6 +174,9 @@ public:
     bool trySetSampleCheckStateRecursive(QTreeWidgetItem* item, int sampleId, bool checked);
     bool trySetSampleCheckStateForTypeRecursive(QTreeWidgetItem* item, int sampleId,
                                                 const QString& dataType, bool checked);
+
+    void applyNavigationViewFilter();
+    QString m_navigationViewFilter;
 };
 
 #endif // DATANAVIGATOR_H

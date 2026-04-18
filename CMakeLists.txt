@@ -129,6 +129,8 @@ list(APPEND DIALOG_FILES
     "${PROJECT_SOURCE_DIR}/gui/dialogs/TwoCurvePickDialog.h"
     "${PROJECT_SOURCE_DIR}/gui/dialogs/WeightedCurveSumDialog.cpp"
     "${PROJECT_SOURCE_DIR}/gui/dialogs/WeightedCurveSumDialog.h"
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/NavigatorAttributeFilterDialog.cpp"
+    "${PROJECT_SOURCE_DIR}/gui/dialogs/NavigatorAttributeFilterDialog.h"
 )
 
 

@@ -16,6 +16,8 @@
 #include <QMdiSubWindow>        //  QMdiSubWindow
 #include "gui/dialogs/SamplePropertiesDialog.h"
 #include "gui/dialogs/SampleDataTableDialog.h"
+#include "gui/dialogs/NavigatorAttributeFilterDialog.h"
+#include <QDialog>
 
 #include "StackTraceUtils.h"
 
@@ -738,7 +740,8 @@ void DataNavigator::onItemExpanded(QTreeWidgetItem *item)
 void DataNavigator::loadShortCodesForType(QTreeWidgetItem* typeItem, const QString& dataType)
 {
     QString error;
-    QList<QString> shortCodes = m_dao.fetchShortCodesForDataType(dataType, error);
+    const QJsonObject attrFilter = m_navigatorAttributeFilters.value(dataType, QJsonObject());
+    QList<QString> shortCodes = m_dao.fetchShortCodesForDataType(dataType, error, attrFilter);
     if (!error.isEmpty()) {
         DEBUG_LOG << "Error loading short codes for type " << dataType << ": " << error;
         return;
@@ -759,8 +762,10 @@ void DataNavigator::loadParallelSamplesForShortCode(QTreeWidgetItem* shortCodeIt
 {
     NavigatorNodeInfo parentInfo = shortCodeItem->data(0, Qt::UserRole).value<NavigatorNodeInfo>();
     QString error;
+    const QJsonObject attrFilter = m_navigatorAttributeFilters.value(parentInfo.dataType, QJsonObject());
     // 获取平行样信息
-    auto samples = m_dao.fetchParallelSamplesForShortCodeAndType(parentInfo.shortCode, parentInfo.dataType, error);
+    auto samples = m_dao.fetchParallelSamplesForShortCodeAndType(parentInfo.shortCode, parentInfo.dataType, error,
+                                                                 attrFilter);
     
     if (!error.isEmpty()) {
         DEBUG_LOG << "Error loading parallel samples: " << error;
@@ -1046,6 +1051,36 @@ void DataNavigator::contextMenuEvent(QContextMenuEvent *event)
                         }
                     }
                 });
+            }
+
+            if (info.type == NavigatorNodeInfo::DataType && item == m_bigTgRoot) {
+                menu.addSeparator();
+                QAction* attrFilterAct = menu.addAction(tr("属性分类…"));
+                QAction* clearAttrAct = nullptr;
+                if (NavigatorDAO::attributeFilterHasCriteria(
+                        m_navigatorAttributeFilters.value(QStringLiteral("大热重")))) {
+                    clearAttrAct = menu.addAction(tr("清除属性分类"));
+                }
+                connect(attrFilterAct, &QAction::triggered, this, [this, item]() {
+                    NavigatorAttributeFilterDialog dlg(QStringLiteral("大热重"), this);
+                    dlg.setFilter(m_navigatorAttributeFilters.value(QStringLiteral("大热重")));
+                    if (dlg.exec() != QDialog::Accepted) {
+                        return;
+                    }
+                    const QJsonObject f = dlg.filter();
+                    if (f.isEmpty()) {
+                        m_navigatorAttributeFilters.remove(QStringLiteral("大热重"));
+                    } else {
+                        m_navigatorAttributeFilters.insert(QStringLiteral("大热重"), f);
+                    }
+                    refreshNode(item);
+                });
+                if (clearAttrAct) {
+                    connect(clearAttrAct, &QAction::triggered, this, [this, item]() {
+                        m_navigatorAttributeFilters.remove(QStringLiteral("大热重"));
+                        refreshNode(item);
+                    });
+                }
             }
 
             // 删除操作菜单

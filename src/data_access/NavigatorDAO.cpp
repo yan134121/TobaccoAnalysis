@@ -5,8 +5,127 @@
 #include "NavigatorDAO.h"
 #include "DatabaseManager.h"
 #include "core/sql/SqlConfigLoader.h"
+#include <QJsonObject>
+#include <QStringList>
 #include <QSqlQuery>
 #include <QSqlError>
+
+namespace {
+
+/// 业务表 import_attributes（JSON）中的字段与样本属性界面一致；样本表列可能未同步，需同时匹配列与 JSON
+QString importJsonExpr(const QString& dAlias)
+{
+    return QStringLiteral("IFNULL(%1.import_attributes, CAST('{}' AS JSON))").arg(dAlias);
+}
+
+QPair<QString, QMap<QString, QVariant>> makeAttributeFilterSql(const QJsonObject& filter,
+                                                               const QString& sAlias,
+                                                               const QString& bAlias,
+                                                               const QString& dAlias)
+{
+    QMap<QString, QVariant> binds;
+    QStringList conds;
+
+    const QString ys = filter.value(QStringLiteral("year")).toString().trimmed();
+    if (!ys.isEmpty()) {
+        bool ok = false;
+        const int yi = ys.toInt(&ok);
+        if (ok) {
+            binds[QStringLiteral(":navf_year")] = yi;
+            if (!dAlias.isEmpty()) {
+                conds << QStringLiteral(
+                           "( %1.year = :navf_year OR "
+                           "CAST(JSON_UNQUOTE(JSON_EXTRACT(%2, '$.year')) AS UNSIGNED) = :navf_year )")
+                             .arg(sAlias)
+                             .arg(importJsonExpr(dAlias));
+            } else {
+                conds << QStringLiteral("%1.year = :navf_year").arg(sAlias);
+            }
+        }
+    }
+
+    auto addStringCoalesceJson = [&](const QString& jsonKey, const QString& sqlCol) {
+        const QString v = filter.value(jsonKey).toString().trimmed();
+        if (v.isEmpty()) {
+            return;
+        }
+        const QString ph = QStringLiteral(":navf_") + jsonKey;
+        binds[ph] = v;
+        if (!dAlias.isEmpty()) {
+            const QString jsonPathLiteral = QStringLiteral("'$.%1'").arg(jsonKey);
+            conds << QStringLiteral(
+                       "COALESCE( NULLIF(TRIM(%1.%2), ''), "
+                       "JSON_UNQUOTE(JSON_EXTRACT(%3, %4)) ) = %5")
+                       .arg(sAlias)
+                       .arg(sqlCol)
+                       .arg(importJsonExpr(dAlias))
+                       .arg(jsonPathLiteral)
+                       .arg(ph);
+        } else {
+            conds << QStringLiteral("%1.%2 = %3").arg(sAlias, sqlCol, ph);
+        }
+    };
+
+    addStringCoalesceJson(QStringLiteral("origin"), QStringLiteral("origin"));
+    addStringCoalesceJson(QStringLiteral("part"), QStringLiteral("part"));
+    addStringCoalesceJson(QStringLiteral("grade"), QStringLiteral("grade"));
+
+    {
+        const QString v = filter.value(QStringLiteral("type")).toString().trimmed();
+        if (!v.isEmpty()) {
+            const QString ph = QStringLiteral(":navf_type");
+            binds[ph] = v;
+            if (!dAlias.isEmpty()) {
+                conds << QStringLiteral(
+                           "COALESCE( NULLIF(TRIM(%1.`type`), ''), "
+                           "JSON_UNQUOTE(JSON_EXTRACT(%2, '$.type')) ) = %3")
+                           .arg(sAlias)
+                           .arg(importJsonExpr(dAlias))
+                           .arg(ph);
+            } else {
+                conds << QStringLiteral("%1.`type` = %2").arg(sAlias, ph);
+            }
+        }
+    }
+
+    {
+        const QString v = filter.value(QStringLiteral("project_name")).toString().trimmed();
+        if (!v.isEmpty()) {
+            const QString ph = QStringLiteral(":navf_project_name");
+            binds[ph] = v;
+            conds << QStringLiteral("%1.project_name = %2").arg(sAlias, ph);
+        }
+    }
+
+    const QString batchCode = filter.value(QStringLiteral("batch_code")).toString().trimmed();
+    if (!batchCode.isEmpty()) {
+        conds << QStringLiteral("%1.batch_code = :navf_batch_code").arg(bAlias);
+        binds[QStringLiteral(":navf_batch_code")] = batchCode;
+    }
+
+    const QString extra = conds.isEmpty() ? QString() : (QStringLiteral(" AND ") + conds.join(QStringLiteral(" AND ")));
+    return {extra, binds};
+}
+
+} // namespace
+
+bool NavigatorDAO::attributeFilterHasCriteria(const QJsonObject& o)
+{
+    if (o.isEmpty()) {
+        return false;
+    }
+    static const QStringList keys = {
+        QStringLiteral("year"), QStringLiteral("origin"), QStringLiteral("part"),
+        QStringLiteral("grade"), QStringLiteral("type"), QStringLiteral("project_name"),
+        QStringLiteral("batch_code")};
+    for (const QString& k : keys) {
+        if (o.value(k).toString().trimmed().isEmpty()) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
 
 NavigatorDAO::NavigatorDAO() {}
 
@@ -546,42 +665,68 @@ QList<QVariantMap> NavigatorDAO::searchSamplesByName(const QString& keyword, QSt
 }
 
 // 【新增】获取指定数据类型的所有ShortCode
-QList<QString> NavigatorDAO::fetchShortCodesForDataType(const QString& dataType, QString& error)
+QList<QString> NavigatorDAO::fetchShortCodesForDataType(const QString& dataType, QString& error,
+                                                        const QJsonObject& attributeFilter)
 {
     QList<QString> shortCodes;
     QSqlQuery query(DatabaseManager::instance().database());
-    
+
     // 确定数据表名
     QString tableName;
-    if (dataType == "大热重") tableName = "tg_big_data";
-    else if (dataType == "小热重") tableName = "tg_small_data";
-    else if (dataType == "小热重（原始数据）") tableName = "tg_small_raw_data";
-    else if (dataType == "色谱") tableName = "chromatography_data";
-    else return shortCodes;
+    if (dataType == "大热重") {
+        tableName = "tg_big_data";
+    } else if (dataType == "小热重") {
+        tableName = "tg_small_data";
+    } else if (dataType == "小热重（原始数据）") {
+        tableName = "tg_small_raw_data";
+    } else if (dataType == "色谱") {
+        tableName = "chromatography_data";
+    } else {
+        return shortCodes;
+    }
 
-    // 联合查询，找出存在于指定数据表中的样本ShortCode
-    // 使用SqlConfigLoader获取SQL语句
-    QString opName = QString("select_short_codes_for_%1").arg(tableName);
-    QString sql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", opName).sql;
-    
-    if (sql.isEmpty()) {
-        // 默认SQL
+    const bool useAttr = attributeFilterHasCriteria(attributeFilter);
+
+    QString sql;
+    if (useAttr) {
+        const auto clause = makeAttributeFilterSql(attributeFilter, QStringLiteral("s"), QStringLiteral("b"),
+                                                   QStringLiteral("d"));
         sql = QString(R"(
+            SELECT DISTINCT s.short_code
+            FROM single_tobacco_sample s
+            JOIN tobacco_batch b ON s.batch_id = b.id
+            JOIN %1 d ON s.id = d.sample_id
+            WHERE 1=1
+        )").arg(tableName);
+        sql += clause.first;
+        sql += QStringLiteral(" ORDER BY s.short_code");
+
+        query.prepare(sql);
+        for (auto it = clause.second.constBegin(); it != clause.second.constEnd(); ++it) {
+            query.bindValue(it.key(), it.value());
+        }
+    } else {
+        QString opName = QString("select_short_codes_for_%1").arg(tableName);
+        sql = SqlConfigLoader::getInstance().getSqlOperation("NavigatorDAO", opName).sql;
+
+        if (sql.isEmpty()) {
+            sql = QString(R"(
             SELECT DISTINCT s.short_code 
             FROM single_tobacco_sample s
             JOIN %1 d ON s.id = d.sample_id
             ORDER BY s.short_code
         )").arg(tableName);
+        }
+
+        query.prepare(sql);
     }
-    
-    query.prepare(sql);
-    
+
     if (!query.exec()) {
         error = query.lastError().text();
         DEBUG_LOG << "NavigatorDAO::fetchShortCodesForDataType - SQL Error:" << error;
         return shortCodes;
     }
-    
+
     while (query.next()) {
         shortCodes.append(query.value(0).toString());
     }
@@ -589,33 +734,25 @@ QList<QString> NavigatorDAO::fetchShortCodesForDataType(const QString& dataType,
 }
 
 // 【新增】获取指定ShortCode和数据类型的平行样信息（ID, ParallelNo, Timestamp）
-QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchParallelSamplesForShortCodeAndType(const QString& shortCode, const QString& dataType, QString& error)
+QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchParallelSamplesForShortCodeAndType(const QString& shortCode, const QString& dataType, QString& error,
+                                                                                          const QJsonObject& attributeFilter)
 {
     QList<SampleLeafInfo> samples;
     QSqlQuery query(DatabaseManager::instance().database());
-    
+
     QString tableName;
-    QString timeField = "create_time"; // 默认时间字段，根据实际表结构调整
-    
     if (dataType == "大热重") {
         tableName = "tg_big_data";
-        // 大热重表通常没有独立的时间戳，使用样本表的 create_time 或 detect_date
-        // 但如果数据是一次性导入的，可能需要查关联表的字段
     } else if (dataType == "小热重") {
         tableName = "tg_small_data";
     } else if (dataType == "小热重（原始数据）") {
         tableName = "tg_small_raw_data";
     } else if (dataType == "色谱") {
         tableName = "chromatography_data";
-        // 色谱表可能有独立时间
     } else {
         return samples;
     }
 
-    // 注意：这里我们需要从 single_tobacco_sample 表获取ID和平行号，同时确认数据存在
-    // 时间戳我们优先取 single_tobacco_sample 的 detect_date 或 create_time
-    // 如果数据表有特定时间戳，也可以取
-    
     QString sql = QString(R"(
         SELECT DISTINCT s.id, s.parallel_no, s.detect_date, s.created_at, s.project_name, b.batch_code,
                COALESCE(s.sample_name, '') AS sample_name
@@ -623,12 +760,24 @@ QList<NavigatorDAO::SampleLeafInfo> NavigatorDAO::fetchParallelSamplesForShortCo
         JOIN tobacco_batch b ON s.batch_id = b.id
         JOIN %1 d ON s.id = d.sample_id
         WHERE s.short_code = :short_code
-        ORDER BY s.parallel_no
     )").arg(tableName);
-    
+
+    QMap<QString, QVariant> attrBinds;
+    if (attributeFilterHasCriteria(attributeFilter)) {
+        const auto clause = makeAttributeFilterSql(attributeFilter, QStringLiteral("s"), QStringLiteral("b"),
+                                                   QStringLiteral("d"));
+        sql += clause.first;
+        attrBinds = clause.second;
+    }
+
+    sql += QStringLiteral(" ORDER BY s.parallel_no");
+
     query.prepare(sql);
-    query.bindValue(":short_code", shortCode);
-    
+    query.bindValue(QStringLiteral(":short_code"), shortCode);
+    for (auto it = attrBinds.constBegin(); it != attrBinds.constEnd(); ++it) {
+        query.bindValue(it.key(), it.value());
+    }
+
     if (!query.exec()) {
         error = query.lastError().text();
         DEBUG_LOG << "NavigatorDAO::fetchParallelSamplesForShortCodeAndType - SQL Error:" << error;

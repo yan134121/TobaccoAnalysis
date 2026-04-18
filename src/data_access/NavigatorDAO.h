@@ -17,6 +17,7 @@
 #include <QVariantMap>
 #include <QVector>
 #include <QPointF>
+#include <QJsonObject>
 
 // 【关键】新增这个结构体的定义
 struct ParallelSampleInfo {
@@ -67,7 +68,12 @@ public:
     QList<QVariantMap> searchSamplesByName(const QString& keyword, QString& error);
 
     // 【新增】获取指定数据类型的所有ShortCode
-    QList<QString> fetchShortCodesForDataType(const QString& dataType, QString& error);
+    /// attributeFilter：可选样本属性条件（年份、产地、部位等），仅非空字段参与筛选
+    QList<QString> fetchShortCodesForDataType(const QString& dataType, QString& error,
+                                              const QJsonObject& attributeFilter = QJsonObject());
+
+    /// 判断 JSON 中是否包含至少一项有效的筛选条件
+    static bool attributeFilterHasCriteria(const QJsonObject& o);
 
     // 【新增】获取指定ShortCode和数据类型的平行样信息（ID, ParallelNo, Timestamp）
     struct SampleLeafInfo {
@@ -79,7 +85,8 @@ public:
         QString batchCode;   //
         QString sampleName;  // 自定义显示名（空则使用默认格式）
     };
-    QList<SampleLeafInfo> fetchParallelSamplesForShortCodeAndType(const QString& shortCode, const QString& dataType, QString& error);
+    QList<SampleLeafInfo> fetchParallelSamplesForShortCodeAndType(const QString& shortCode, const QString& dataType, QString& error,
+                                                                  const QJsonObject& attributeFilter = QJsonObject());
 
     /// 将当前数据类型下、该短码对应的所有样本行的 short_code 更新为新值（仅更新在对应业务表中存在数据的样本）
     bool renameShortCodeForDataType(const QString& oldShortCode, const QString& newShortCode, const QString& dataType, QString& error);

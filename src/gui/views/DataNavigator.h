@@ -9,6 +9,8 @@
 #include <QStyledItemDelegate> // 
 #include <QSet>
 #include <QStringList>
+#include <QMap>
+#include <QJsonObject>
 #include "../../core/common.h"
 
 
@@ -177,6 +179,9 @@ public:
 
     void applyNavigationViewFilter();
     QString m_navigationViewFilter;
+
+    /// 数据类型 -> 样本属性筛选（如「大热重」）；仅非空字段参与 DAO 查询
+    QMap<QString, QJsonObject> m_navigatorAttributeFilters;
 };
 
 #endif // DATANAVIGATOR_H

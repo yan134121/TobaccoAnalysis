@@ -1,5 +1,5 @@
 /**
- * PeakSeg-COW / 微调 / 差异度 自洽与回归校验（不依赖 MATLAB 运行时）。
+ * PeakSeg-COW 自洽与回归校验（不依赖 MATLAB 运行时）。
  * 构建：见 tests/CMakeLists.txt
  */
 #include <QCoreApplication>
@@ -8,8 +8,6 @@
 #include <cstdio>
 
 #include "core/entities/Curve.h"
-#include "services/algorithm/ChromatogramSegmentFinetune.h"
-#include "services/algorithm/ChromatogramDifferenceMetrics.h"
 #include "services/algorithm/PeakSegCOWAlignment.h"
 #include "services/algorithm/processing/IProcessingStep.h"
 
@@ -62,7 +60,7 @@ int main(int argc, char* argv[])
         const double t = double(i);
         x.append(t);
         yRef.append(std::sin(t * 0.02) + 0.1 * std::sin(t * 0.15));
-        yTgt.append(yRef[i]); // 与参考相同 → 对齐后应高度一致
+        yTgt.append(yRef[i]);
     }
 
     Curve ref(x, yRef, QStringLiteral("ref"));
@@ -95,36 +93,6 @@ int main(int argc, char* argv[])
         return 2;
     }
 
-    QVector<int> segStarts = PeakSegCOWAlignment::referenceSegmentStarts1Based(&ref, p, err);
-    if (segStarts.isEmpty()) {
-        std::fprintf(stderr, "FAIL: segment starts %s\n", qPrintable(err));
-        return 3;
-    }
-    ChromatogramFinetuneResult ft = finetuneSegmentBoundaries(x, ya, segStarts, 3);
-    if (ft.segmentAreasFinetuned.isEmpty()) {
-        std::fprintf(stderr, "FAIL: finetune produced no areas\n");
-        return 4;
-    }
-
-    QVector<double> a1 = ft.segmentAreasFinetuned;
-    QVector<double> a2 = a1;
-    for (double& v : a2)
-        v *= 1.02;
-    const double cd = ChromatogramDifferenceMetrics::cosineDifference(a1, a2);
-    if (cd < 1e-6 || cd > 1.0) {
-        std::fprintf(stderr, "FAIL: cosineDifference unexpected %g\n", cd);
-        return 5;
-    }
-
-    QVector<int> ids{1, 2};
-    QVector<QVector<double>> rows{a1, a2};
-    QVariantList tbl = ChromatogramDifferenceMetrics::pairwiseDifferenceTable(ids, rows, 15.0, {});
-    if (tbl.isEmpty()) {
-        std::fprintf(stderr, "FAIL: pairwise table empty\n");
-        return 6;
-    }
-
-    std::printf("OK chromatogram_matlab_parity_test PeakSeg r=%.6f rmse=%.6f segs=%d pairs=%d\n",
-                r, e, ft.segStartsFinetuned1Based.size(), tbl.size());
+    std::printf("OK chromatogram_matlab_parity_test PeakSeg r=%.6f rmse=%.6f\n", r, e);
     return 0;
 }

@@ -224,9 +224,9 @@ DEBUG_LOG << "m_navigator" << m_navigator;
                 } else if (typeKey == QStringLiteral("小热重（原始数据）") && tgSmallRawDataProcessDialog) {
                     if (selected) tgSmallRawDataProcessDialog->addSampleCurve(sampleId, legendName);
                     else tgSmallRawDataProcessDialog->removeSampleCurve(sampleId);
-                } else if (typeKey == QStringLiteral("色谱") && chromatographDataProcessDialog) {
-                    if (selected) chromatographDataProcessDialog->addSampleCurve(sampleId, legendName);
-                    else chromatographDataProcessDialog->removeSampleCurve(sampleId);
+                } else if (typeKey == QStringLiteral("色谱")) {
+                    // 色谱 add/remove 由 ChromatographDataProcessDialog 自身订阅 selectionChangedByType 处理，
+                    // 避免与 MainWindow 重复调用 addSampleCurve（会导致重复弹参考样对话框、第三次勾选异常等）
                 } else if (typeKey == QStringLiteral("工序大热重") && processTgBigDataProcessDialog) {
                     if (selected) processTgBigDataProcessDialog->addSampleCurve(sampleId, legendName);
                     else processTgBigDataProcessDialog->removeSampleCurve(sampleId);

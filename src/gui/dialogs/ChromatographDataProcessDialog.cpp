@@ -28,46 +28,6 @@
 #include <QInputDialog>
 #include <QSizePolicy>
 
-#include "services/algorithm/ChromatogramCalibTables.h"
-
-namespace {
-
-QSharedPointer<Curve> chromFinetunePlotBaseCurve(const SampleDataFlexible& sample, int referenceSampleId)
-{
-    QSharedPointer<Curve> curv;
-    for (const StageData& st : sample.stages) {
-        if (st.stageName == StageName::PeakAlignment && st.curve) {
-            curv = st.curve;
-            break;
-        }
-    }
-    if (curv.isNull() && sample.sampleId == referenceSampleId) {
-        for (const StageData& st : sample.stages) {
-            if (st.stageName == StageName::Clip && st.curve) {
-                curv = st.curve;
-                break;
-            }
-        }
-    }
-    return curv;
-}
-
-QVector<double> finetuneBoundaryXWorld(const QSharedPointer<Curve>& curve, const QVariantList& idx1List)
-{
-    QVector<double> out;
-    if (curve.isNull() || idx1List.isEmpty())
-        return out;
-    const QVector<QPointF> pts = curve->data();
-    for (const QVariant& v : idx1List) {
-        const int i1 = v.toInt();
-        if (i1 >= 1 && i1 <= pts.size())
-            out.append(pts[i1 - 1].x());
-    }
-    return out;
-}
-
-} // namespace
-
 ChromatographDataProcessDialog::ChromatographDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
     QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
 {
@@ -458,7 +418,12 @@ void ChromatographDataProcessDialog::addSampleCurve(int sampleId, const QString&
         }
         
         DEBUG_LOG << "ChromatographDataProcessDialog::addSampleCurve - ID:" << sampleId << "Name:" << sampleName;
-        
+
+        {
+            const QString nm = sampleName.trimmed().isEmpty() ? buildSampleDisplayName(sampleId) : sampleName;
+            m_selectedSamples.insert(sampleId, nm);
+        }
+
         const int prevVisible = m_visibleSamples.size();
         // 将样本加入“可见曲线”集合（与主导航、列表勾选共用）
         m_visibleSamples.insert(sampleId);
@@ -595,38 +560,22 @@ QString ChromatographDataProcessDialog::buildSampleDisplayName(int sampleId)
     return displayName;
 }
 
-void ChromatographDataProcessDialog::ensureCalibMapForLegendTags() const
-{
-    const QString p = m_currentParams.chromCalibSampleMapPath.trimmed();
-    if (p.isEmpty()) {
-        m_calibSampleToCalibMapCache.clear();
-        m_calibMapCachePath.clear();
-        return;
-    }
-    if (p == m_calibMapCachePath && !m_calibSampleToCalibMapCache.isEmpty())
-        return;
-    QString err;
-    m_calibSampleToCalibMapCache.clear();
-    ChromatogramCalibTables::loadSampleToCalibMapWide(p, m_calibSampleToCalibMapCache, err);
-    m_calibMapCachePath = p;
-}
-
 QString ChromatographDataProcessDialog::chromatographLegendExtraTags(const SampleIdentifier& sid) const
 {
-    ensureCalibMapForLegendTags();
-    QString extra;
     const QString sc = sid.shortCode.trimmed();
     if (sc.startsWith(QStringLiteral("0000_")))
-        extra += QStringLiteral("（基准）");
-    if (!sc.isEmpty() && m_calibSampleToCalibMapCache.contains(sc))
-        extra += QStringLiteral("（标定表）");
-    return extra;
+        return QStringLiteral("（基准）");
+    return QString();
 }
 
 void ChromatographDataProcessDialog::promptChromatographReferenceSampleIfNeeded(int previousVisibleCount)
 {
     const int newVisibleCount = m_visibleSamples.size();
-    if (newVisibleCount < 2 || newVisibleCount <= previousVisibleCount)
+    if (newVisibleCount < 2)
+        return;
+    // 仅在首次从「少于 2 条可见曲线」变为「不少于 2 条」时询问参考样；
+    // 继续添加第 3、4…条不再弹窗，避免打断选择且防止与主导航勾选状态冲突。
+    if (previousVisibleCount >= 2)
         return;
 
     QList<int> ids = m_visibleSamples.values();
@@ -813,26 +762,20 @@ void ChromatographDataProcessDialog::setupMiddlePanel()
     m_chartView2 = new ChartView();
     m_chartView3 = new ChartView();
     m_chartView4 = new ChartView();
-    m_chartView5 = new ChartView();
     if (!m_chartView1
         || !m_chartView2
         || !m_chartView3
-        || !m_chartView4
-        || !m_chartView5) {
+        || !m_chartView4) {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ERROR: Failed to create ChartView!";
     } else {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ChartView created successfully";
     }
 
-    // 3x2 网格：第一行 原始 / 基线 / 裁剪；第二行 对齐 / 微调边界 / 占位
+    // 2x2：原始数据 / 基线校正 / 裁剪数据 / 色谱对齐
     m_middleLayout->addWidget(m_chartView1, 0, 0);
     m_middleLayout->addWidget(m_chartView2, 0, 1);
-    m_middleLayout->addWidget(m_chartView3, 0, 2);
-    m_middleLayout->addWidget(m_chartView4, 1, 0);
-    m_middleLayout->addWidget(m_chartView5, 1, 1);
-    QWidget* plotGridSpacer = new QWidget(m_middlePanel);
-    plotGridSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_middleLayout->addWidget(plotGridSpacer, 1, 2);
+    m_middleLayout->addWidget(m_chartView3, 1, 0);
+    m_middleLayout->addWidget(m_chartView4, 1, 1);
 
     // m_legendPanel = new QWidget();
     // m_legendLayout = new QVBoxLayout(m_legendPanel);
@@ -1001,7 +944,6 @@ void ChromatographDataProcessDialog::onClearCurvesClicked()
     if (m_chartView2) m_chartView2->clearGraphs();
     if (m_chartView3) m_chartView3->clearGraphs();
     if (m_chartView4) m_chartView4->clearGraphs();
-    if (m_chartView5) m_chartView5->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();
@@ -2035,7 +1977,6 @@ void ChromatographDataProcessDialog::recalculateAndUpdatePlot()
         if (m_chartView2) m_chartView2->clearGraphs();
         if (m_chartView3) m_chartView3->clearGraphs();
         if (m_chartView4) m_chartView4->clearGraphs();
-        if (m_chartView5) m_chartView5->clearGraphs();
         updateLegendPanel();
         QApplication::restoreOverrideCursor();
         m_parameterButton->setEnabled(true);
@@ -2259,7 +2200,6 @@ void ChromatographDataProcessDialog::updatePlot()
         m_chartView2->clearGraphs();
         m_chartView3->clearGraphs();
         m_chartView4->clearGraphs();
-        m_chartView5->clearGraphs();
         return;
     }
 
@@ -2322,11 +2262,6 @@ void ChromatographDataProcessDialog::updatePlot()
     m_chartView4->clearGraphs();
     m_chartView4->setLabels(tr("响应时间"), tr("强度"));
     m_chartView4->setPlotTitle(QStringLiteral("色谱对齐"));
-
-    // --- 5. 对齐后微调边界（曲线 + 分段竖线）---
-    m_chartView5->clearGraphs();
-    m_chartView5->setLabels(tr("响应时间"), tr("强度"));
-    m_chartView5->setPlotTitle(tr("对齐后微调边界"));
 
     for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
         const SampleGroup& group = groupIt.value();
@@ -2418,80 +2353,12 @@ void ChromatographDataProcessDialog::updatePlot()
         }
     }
 
-    // --- 填充【对齐后微调边界】：与后台 SegmentComparison 一致（先画曲线再画竖线以便坐标轴范围正确）---
-    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
-        const SampleGroup& group = groupIt.value();
-        for (const auto& sample : group.sampleDatas) {
-            const int sampleId = sample.sampleId;
-            if (!m_visibleSamples.contains(sampleId)) continue;
-
-            QVariantList segIdxList;
-            for (const StageData& st : sample.stages) {
-                if (st.stageName != StageName::SegmentComparison) continue;
-                const QVariantList vl = st.metrics.value(QStringLiteral("seg_starts_finetuned_1based")).toList();
-                if (!vl.isEmpty()) {
-                    segIdxList = vl;
-                    break;
-                }
-            }
-            if (segIdxList.isEmpty()) continue;
-
-            const QSharedPointer<Curve> base = chromFinetunePlotBaseCurve(sample, m_currentParams.referenceSampleId);
-            if (base.isNull()) continue;
-
-            SingleTobaccoSampleDAO daoFt;
-            SampleIdentifier sidFt = daoFt.getSampleIdentifierById(sampleId);
-            const QString legend5 = QString("%1-%2-%3-%4")
-                                         .arg(sidFt.projectName)
-                                         .arg(sidFt.batchCode)
-                                         .arg(sidFt.shortCode)
-                                         .arg(sidFt.parallelNo)
-                                         + chromatographLegendExtraTags(sidFt);
-            const QColor colorFt = sampleColorMap.value(sampleId, QColor(200, 30, 30));
-
-            QSharedPointer<Curve> dup = QSharedPointer<Curve>::create(base->data(), legend5);
-            dup->setColor(colorFt);
-            dup->setSampleId(sampleId);
-            dup->setLineStyle(base->lineStyle());
-            m_chartView5->addCurve(dup);
-        }
-    }
-    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
-        const SampleGroup& group = groupIt.value();
-        for (const auto& sample : group.sampleDatas) {
-            const int sampleId = sample.sampleId;
-            if (!m_visibleSamples.contains(sampleId)) continue;
-
-            QVariantList segIdxList;
-            for (const StageData& st : sample.stages) {
-                if (st.stageName != StageName::SegmentComparison) continue;
-                const QVariantList vl = st.metrics.value(QStringLiteral("seg_starts_finetuned_1based")).toList();
-                if (!vl.isEmpty()) {
-                    segIdxList = vl;
-                    break;
-                }
-            }
-            if (segIdxList.isEmpty()) continue;
-
-            const QSharedPointer<Curve> base = chromFinetunePlotBaseCurve(sample, m_currentParams.referenceSampleId);
-            if (base.isNull()) continue;
-
-            const QVector<double> xMarks = finetuneBoundaryXWorld(base, segIdxList);
-            if (xMarks.isEmpty()) continue;
-            QColor lineColor = sampleColorMap.value(sampleId, QColor(200, 30, 30));
-            lineColor.setAlpha(90);
-            m_chartView5->addVerticalLines(xMarks, lineColor);
-        }
-    }
-
     m_chartView2->setLegendVisible(false);
     m_chartView2->replot();
     m_chartView3->setLegendVisible(false);
     m_chartView3->replot();
     m_chartView4->setLegendVisible(false);
     m_chartView4->replot();
-    m_chartView5->setLegendVisible(false);
-    m_chartView5->replot();
 
 
     // // --- 2. 更新【归一化】图表 (m_chartView3) ---

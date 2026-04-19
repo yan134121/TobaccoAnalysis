@@ -154,24 +154,6 @@ struct ProcessingParameters {
     double chromClipMinX = 0.0;            // chromClipByIndex==false 时使用
     double chromClipMaxX = 0.0;
 
-    // --- 对齐后分段边界微调（finetuned_bounds_results.m） ---
-    bool chromFinetuneEnabled = false;
-    int chromFinetuneAdjustRange = 5;      // 每段起点允许左右移动的最大点数
-
-    // --- 分段面积向量差异度（calculate_all_difference.m，一期不含 Excel 标定表） ---
-    bool chromDifferencePairwiseEnabled = false;
-    double chromMeanSpcCalibGain = 15.0;   // meanSPC 修正中的 gain（无标定数据时 Calib_cosine 视为 0）
-    /** 与 all_norm.m 一致：每段面积除以参考样本（通常为标定样）对应段面积后再算两两差异度 */
-    bool chromSegmentAreaDivideByReferenceForDiff = false;
-    /** 0 关闭；否则将该 1-based 段索引位置强制为 1.0（对应 all_norm.m 第 31 段策略） */
-    int chromSegmentForceUnitIndex1 = 0;
-    /** 标定样映射表 XLSX（宽表，与 MATLAB readtable 一致）；空则不做样品→标定键 */
-    QString chromCalibSampleMapPath;
-    /** 标定样两两 cosine（RefSample, CmpSample, cosine）；空则 calibCosine 全按缺失处理 */
-    QString chromCalibPairwiseCosinePath;
-    /** 外部分段起点（1-based，每行一个）；非空则微调阶段不调用 PeakSeg referenceSegmentStarts */
-    QString chromExternalSegmentStartsFile;
-
     // 权重参数
     double weightNRMSE = 0.333;
     double weightPearson = 0.333;

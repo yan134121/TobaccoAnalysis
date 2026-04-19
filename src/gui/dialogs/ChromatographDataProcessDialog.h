@@ -186,7 +186,6 @@ private:
     ChartView* m_chartView2;
     ChartView* m_chartView3;
     ChartView* m_chartView4;
-    ChartView* m_chartView5;
 
     
     // 右侧控制面板
@@ -272,12 +271,8 @@ DataProcessingService* m_processingService = nullptr; // 指向后台服务
     // 根据样本ID构造统一显示名称 short_code(parallel_no)-timestamp
     QString buildSampleDisplayName(int sampleId);
 
-    /** 图例后缀：（基准）对应 0000_ 短码；（标定表）对应已加载的标定映射表中的样品键 */
+    /** 图例后缀：（基准）对应 0000_ 短码 */
     QString chromatographLegendExtraTags(const SampleIdentifier& sid) const;
-    void ensureCalibMapForLegendTags() const;
-
-    mutable QString m_calibMapCachePath;
-    mutable QMap<QString, QString> m_calibSampleToCalibMapCache;
 
     // 刷新左侧“选中样本”列表显示
     void updateSelectedSamplesList();

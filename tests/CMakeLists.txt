@@ -9,8 +9,6 @@ add_executable(chromatogram_matlab_parity_test
     "${_TA_SRC}/core/entities/Curve.cpp"
     "${_TA_SRC}/utils/logger.cpp"
     "${_TA_SRC}/services/algorithm/PeakSegCOWAlignment.cpp"
-    "${_TA_SRC}/services/algorithm/ChromatogramSegmentFinetune.cpp"
-    "${_TA_SRC}/services/algorithm/ChromatogramDifferenceMetrics.cpp"
 )
 
 target_include_directories(chromatogram_matlab_parity_test PRIVATE

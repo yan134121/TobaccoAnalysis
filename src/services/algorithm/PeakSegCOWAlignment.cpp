@@ -3,6 +3,8 @@
  * - movmean 平滑参考、多区间 my_findpeaks 式峰检测、峰簇聚类与谷值分段
  * - 段内 DP：代价 1−ρ，my_linear_resample 与 my_corr 与 MATLAB 实现一致（见本文件内注释）
  * 批处理脚本 Sepu_align_batch.m 中的 opts（ranges/rangeProm）在应用层由 peakSegMatlabSepuAlignBatchParams() 注入（见 DataProcessingService.cpp）
+ *
+ * 性能：movmean 用前缀和 O(n)；DP 内层复用 warping 缓冲区，避免每步 QVector 分配与拷贝（与 MATLAB 数值路径一致）。
  */
 #include "PeakSegCOWAlignment.h"
 
@@ -18,64 +20,69 @@ namespace {
 static QVector<double> movmean(const QVector<double>& x, int span)
 {
     if (span <= 1 || x.isEmpty()) return x;
-    int n = x.size();
-    int half = span / 2;
+    const int n = x.size();
+    const int half = span / 2;
     QVector<double> out;
     out.resize(n);
 
-    // 简单滑动窗口均值（与 MATLAB movmean 的边界“缩窗”近似）
+    // 前缀和：窗口求和 O(1)，总体 O(n)（原实现为 O(n·span)）
+    QVector<double> cum(n + 1);
+    cum[0] = 0.0;
+    for (int i = 0; i < n; ++i)
+        cum[i + 1] = cum[i] + x[i];
+
     for (int i = 0; i < n; ++i) {
-        int l = qMax(0, i - half);
-        int r = qMin(n - 1, i + half);
-        double sum = 0.0;
-        for (int k = l; k <= r; ++k) sum += x[k];
-        out[i] = sum / double(r - l + 1);
+        const int l = qMax(0, i - half);
+        const int r = qMin(n - 1, i + half);
+        out[i] = (cum[r + 1] - cum[l]) / double(r - l + 1);
     }
     return out;
 }
 
-static QVector<double> linearResample(const QVector<double>& data, int newLen)
+/** 与历史 QVector 版数值一致；写入 dst[0..newLen-1]，可原地 src==dst 仅当 origLen==newLen */
+static void linearResampleInPlace(const double* src, int origLen, double* dst, int newLen)
 {
-    QVector<double> d = data;
-    if (d.isEmpty() || newLen <= 0) return {};
-    int origLen = d.size();
-    if (origLen == newLen) return d;
+    if (!src || !dst || origLen <= 0 || newLen <= 0)
+        return;
+    if (origLen == newLen) {
+        if (src != dst) {
+            for (int i = 0; i < newLen; ++i)
+                dst[i] = src[i];
+        }
+        return;
+    }
 
-    QVector<double> out;
-    out.resize(newLen);
-
-    // MATLAB 实现：orig_x=linspace(1,orig_len,orig_len); new_x=linspace(1,orig_len,new_len);
-    // C++ 直接用坐标 new_x(i) in [1, origLen]
+    // MATLAB：orig_x=linspace(1,orig_len,orig_len); new_x=linspace(1,orig_len,new_len);
     for (int i = 0; i < newLen; ++i) {
-        double t = (newLen == 1) ? 0.0 : (double(i) / double(newLen - 1));
-        double newX = 1.0 + t * double(origLen - 1); // [1, origLen]
+        const double t = (newLen == 1) ? 0.0 : (double(i) / double(newLen - 1));
+        const double newX = 1.0 + t * double(origLen - 1);
 
         if (newX <= 1.0) {
-            out[i] = d[0];
+            dst[i] = src[0];
         } else if (newX >= double(origLen)) {
-            out[i] = d[origLen - 1];
+            dst[i] = src[origLen - 1];
         } else {
-            int leftIdx1 = int(qFloor(newX)); // 1-based left index
+            int leftIdx1 = int(qFloor(newX));
             leftIdx1 = qMax(1, qMin(leftIdx1, origLen - 1));
-            double alpha = newX - double(leftIdx1);
-            int left0 = leftIdx1 - 1; // 0-based
-            out[i] = (1.0 - alpha) * d[left0] + alpha * d[left0 + 1];
+            const double alpha = newX - double(leftIdx1);
+            const int left0 = leftIdx1 - 1;
+            dst[i] = (1.0 - alpha) * src[left0] + alpha * src[left0 + 1];
         }
     }
-
-    return out;
 }
 
-static double myCorr(const QVector<double>& x, const QVector<double>& y)
+static double myCorrPtr(const double* x, const double* y, int n)
 {
-    if (x.size() != y.size() || x.isEmpty()) {
+    if (!x || !y || n <= 0)
         return std::numeric_limits<double>::quiet_NaN();
-    }
 
     double meanX = 0.0, meanY = 0.0;
-    for (int i = 0; i < x.size(); ++i) { meanX += x[i]; meanY += y[i]; }
-    meanX /= double(x.size());
-    meanY /= double(y.size());
+    for (int i = 0; i < n; ++i) {
+        meanX += x[i];
+        meanY += y[i];
+    }
+    meanX /= double(n);
+    meanY /= double(n);
 
     double num = 0.0;
     double normX = 0.0;
@@ -84,9 +91,9 @@ static double myCorr(const QVector<double>& x, const QVector<double>& y)
     bool allZeroY = true;
     bool equalXY = true;
 
-    for (int i = 0; i < x.size(); ++i) {
-        double xc = x[i] - meanX;
-        double yc = y[i] - meanY;
+    for (int i = 0; i < n; ++i) {
+        const double xc = x[i] - meanX;
+        const double yc = y[i] - meanY;
         num += xc * yc;
         normX += xc * xc;
         normY += yc * yc;
@@ -469,6 +476,10 @@ ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
         return result;
     }
 
+    // DP 内层每步原分配 QVector 并重采样；复用缓冲区避免海量小分配（主要性能来源）
+    QVector<double> warpWork;
+    warpWork.resize(n1);
+
     // 参数（与 MATLAB opts 对齐）
     const double minProm = params.value("min_prominence", 0.05).toDouble();
     const int maxClusterGap = params.value("max_cluster_gap", 5).toInt();
@@ -509,11 +520,8 @@ ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
     for (int i = segStarts0[0]; i <= segEnds0[0]; ++i) refSeg0.push_back(chrom1[i]);
 
     for (int j = jmin; j <= jmax; ++j) {
-        QVector<double> segToWarp;
-        segToWarp.reserve(j);
-        for (int i = 0; i < j; ++i) segToWarp.push_back(chrom2[i]);
-        QVector<double> warped = linearResample(segToWarp, refSeg0.size());
-        double r = myCorr(refSeg0, warped);
+        linearResampleInPlace(chrom2.constData(), j, warpWork.data(), firstLen);
+        const double r = myCorrPtr(refSeg0.constData(), warpWork.constData(), firstLen);
         double cost = 1.0 - r;
         if (!qIsFinite(cost)) continue;
         DP[0][j - 1] = cost;
@@ -550,17 +558,15 @@ ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
                 double prev = DP[iSeg - 2][k - 1];
                 if (!qIsFinite(prev)) continue;
 
-                QVector<double> segToWarp;
                 int s0 = k;      // MATLAB: k+1, so 1-based start = k+1 => 0-based = k
                 int e0 = j - 1;  // inclusive 0-based
                 if (s0 < 0) s0 = 0;
                 if (e0 >= n2) e0 = n2 - 1;
                 if (s0 > e0) continue;
-                segToWarp.reserve(e0 - s0 + 1);
-                for (int u = s0; u <= e0; ++u) segToWarp.push_back(chrom2[u]);
 
-                QVector<double> warped = linearResample(segToWarp, currLen);
-                double r = myCorr(refSeg, warped);
+                const int segLenTgt = e0 - s0 + 1;
+                linearResampleInPlace(chrom2.constData() + s0, segLenTgt, warpWork.data(), currLen);
+                const double r = myCorrPtr(refSeg.constData(), warpWork.constData(), currLen);
                 double cost = 1.0 - r;
                 if (!qIsFinite(cost)) continue;
                 double total = prev + cost;
@@ -613,17 +619,17 @@ ProcessingResult PeakSegCOWAlignment::process(const QList<Curve*>& inputCurves,
         int targetLen = refEnd0 - refStart0 + 1;
 
         if (endIdx1 >= startIdx1 && startIdx1 <= n2) {
-            int s0 = startIdx1 - 1;
-            int e0 = qMin(endIdx1, n2) - 1;
-            QVector<double> origSeg;
-            origSeg.reserve(qMax(0, e0 - s0 + 1));
-            for (int u = s0; u <= e0; ++u) origSeg.push_back(chrom2[u]);
-
-            QVector<double> warped;
-            if (i == m - 1 && origSeg.size() == targetLen) warped = origSeg;
-            else warped = linearResample(origSeg, targetLen);
-
-            for (int u = 0; u < targetLen; ++u) aligned[refStart0 + u] = warped[u];
+            const int s0 = startIdx1 - 1;
+            const int e0 = qMin(endIdx1, n2) - 1;
+            const int segLenOrig = e0 - s0 + 1;
+            if (i == m - 1 && segLenOrig == targetLen) {
+                for (int u = 0; u < targetLen; ++u)
+                    aligned[refStart0 + u] = chrom2[s0 + u];
+            } else {
+                linearResampleInPlace(chrom2.constData() + s0, segLenOrig, warpWork.data(), targetLen);
+                for (int u = 0; u < targetLen; ++u)
+                    aligned[refStart0 + u] = warpWork[u];
+            }
         } else {
             // 保持为 0
         }

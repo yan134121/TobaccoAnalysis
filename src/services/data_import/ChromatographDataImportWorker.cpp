@@ -169,27 +169,26 @@ QString ChromatographDataImportWorker::findTicBackCsv(const QString& dirPath)
 // 从文件夹名称解析short_code和parallel_no
 bool ChromatographDataImportWorker::parseDataFolderName(const QString& folderName, QString& shortCode, int& parallelNo)
 {
-    // 解析文件夹名称，例如：2075-2.D、2075-4.D、20901-1.D、20901-2.D
-    QRegularExpression folderPattern("^(\\d+)(?:-(\\d+))?\\.D$");
-    QRegularExpressionMatch match = folderPattern.match(folderName);
-    
-    if (match.hasMatch()) {
-        shortCode = match.captured(1);
-        
-        // 检查是否有平行样编号
-        if (match.lastCapturedIndex() >= 2 && !match.captured(2).isEmpty()) {
-            parallelNo = match.captured(2).toInt();
-        } else {
-            // 如果没有明确的平行样编号，默认为1
-            parallelNo = 1;
-        }
+    // 兼容：2075-2.D、20901-1.D（数字-数字）以及 标定样1.D 等任意以 .D 结尾的文件夹名
+    static const QRegularExpression endsWithD(QStringLiteral("^(.+)\\.D$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch m = endsWithD.match(folderName.trimmed());
+    if (!m.hasMatch())
+        return false;
 
-        DEBUG_LOG << "folderName:" << folderName << "shortCode:" << shortCode << "parallelNo:" << parallelNo;
-        
-        return true;
+    const QString stem = m.captured(1);
+    // 标准：纯数字-数字 作为 short_code + parallel_no
+    static const QRegularExpression digitHyphenDigit(QStringLiteral("^(\\d+)-(\\d+)$"));
+    const QRegularExpressionMatch m2 = digitHyphenDigit.match(stem);
+    if (m2.hasMatch()) {
+        shortCode = m2.captured(1);
+        parallelNo = m2.captured(2).toInt();
+    } else {
+        shortCode = stem;
+        parallelNo = 1;
     }
-    
-    return false;
+
+    DEBUG_LOG << "folderName:" << folderName << "shortCode:" << shortCode << "parallelNo:" << parallelNo;
+    return true;
 }
 
 // 处理CSV文件并导入数据
@@ -403,19 +402,21 @@ void ChromatographDataImportWorker::run()
         emit progressChanged(currentFolder, folderCount);
         emit progressMessage(tr("正在扫描文件夹: %1").arg(folder));
         
-        // 检查文件夹名称格式，例如：2075-2.D、2075-4.D、20901-1.D、20901-2.D
-        QRegularExpression folderPattern("^(\\d+)(?:-(\\d+))?\\.D$");
-        QRegularExpressionMatch match = folderPattern.match(folder);
-        
-        if (match.hasMatch()) {
-            // 在子文件夹中查找tic_back.csv
-            QString folderPath = dir.absoluteFilePath(folder);
-            QString csvPath = findTicBackCsv(folderPath);
-            
-            if (!csvPath.isEmpty()) {
-                csvFiles.append(qMakePair(csvPath, folder));
-            }
-        }
+        // 任意以 .D 结尾的文件夹（与 parseDataFolderName 一致），内含 tic_back.csv 即参与导入
+        if (!folder.endsWith(QStringLiteral(".D"), Qt::CaseInsensitive))
+            continue;
+
+        QString folderPath = dir.absoluteFilePath(folder);
+        QString csvPath = findTicBackCsv(folderPath);
+        if (csvPath.isEmpty())
+            continue;
+
+        QString sc;
+        int pn = 0;
+        if (!parseDataFolderName(folder, sc, pn))
+            continue;
+
+        csvFiles.append(qMakePair(csvPath, folder));
         
         currentFolder++;
     }

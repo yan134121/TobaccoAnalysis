@@ -37,7 +37,7 @@
 
 namespace {
 
-/** Sepu_align_batch.m 中 opts.ranges / opts.rangeProm */
+/** 与 色谱处理算法/03_色谱对齐/Sepu_align_batch.m 中 opts.ranges / opts.rangeProm 一致 */
 static QVariantMap peakSegMatlabSepuAlignBatchParams()
 {
     QVariantMap extra;
@@ -907,14 +907,21 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
     const QList<int> &sampleIds,
     const ProcessingParameters &params)
 {
+    QElapsedTimer batchTotalTimer;
+    batchTotalTimer.start();
+
     BatchGroupData batchResults;
     SingleTobaccoSampleDAO dao;
 
     DEBUG_LOG << "Processing chromatograph samples:" << sampleIds;
 
+    qint64 perSamplePipelineMs = 0;
+    QElapsedTimer perSampleTimer;
     for (int sampleId : sampleIds) {
+        perSampleTimer.restart();
         // 单样本处理
         SampleDataFlexible singleSample = runChromatographPipeline(sampleId, params);
+        perSamplePipelineMs += perSampleTimer.elapsed();
         SampleIdentifier identifier = dao.getSampleIdentifierById(sampleId);
         QString projectName = identifier.projectName;
         QString batchCode = identifier.batchCode;
@@ -944,10 +951,15 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
 
     }
 
+    DEBUG_LOG << "Chromatograph batch timing: per-sample pipeline"
+              << perSamplePipelineMs << "ms for" << sampleIds.size() << "sample(s)";
+
     // 若启用峰对齐，且指定了参考样本ID，则对组内样本执行对齐（可选 COW / PeakSeg-COW）
     const QString alignStepKey = (params.peakSegCowEnabled ? QStringLiteral("peakseg_cow_alignment")
                                                           : QStringLiteral("cow_alignment"));
     if (params.alignmentEnabled && params.referenceSampleId > 0 && m_registeredSteps.contains(alignStepKey)) {
+        QElapsedTimer alignPhaseTimer;
+        alignPhaseTimer.start();
         IProcessingStep* alignStep = m_registeredSteps.value(alignStepKey);
         QString error;
         QSharedPointer<Curve> refCurve;
@@ -966,6 +978,8 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
         if (refCurve.isNull()) {
             WARNING_LOG << "Chromatogram alignment skipped: reference clip curve not found. referenceSampleId="
                         << params.referenceSampleId;
+            DEBUG_LOG << "Chromatograph batch timing: total" << batchTotalTimer.elapsed()
+                      << "ms (alignment skipped: no reference clip curve)";
             return batchResults;
         }
 
@@ -1020,11 +1034,14 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
                 }
             }
         }
+        DEBUG_LOG << "Chromatograph batch timing: alignment phase" << alignPhaseTimer.elapsed() << "ms";
     }
 
     // 分段边界微调（PeakSeg 参考分段模板 + 对齐曲线）
     if (params.chromFinetuneEnabled && params.peakSegCowEnabled && params.alignmentEnabled
         && params.referenceSampleId > 0) {
+        QElapsedTimer finetunePhaseTimer;
+        finetunePhaseTimer.start();
         QString errFt;
         for (auto git = batchResults.begin(); git != batchResults.end(); ++git) {
             SampleGroup& group = git.value();
@@ -1101,10 +1118,13 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
                 sample.stages.append(stg);
             }
         }
+        DEBUG_LOG << "Chromatograph batch timing: finetune phase" << finetunePhaseTimer.elapsed() << "ms";
     }
 
     // 两两差异度（基于 segment_areas_finetuned）
     if (params.chromDifferencePairwiseEnabled) {
+        QElapsedTimer pairwisePhaseTimer;
+        pairwisePhaseTimer.start();
         for (auto git = batchResults.begin(); git != batchResults.end(); ++git) {
             SampleGroup& group = git.value();
             QVector<int> ids;
@@ -1175,8 +1195,10 @@ BatchGroupData DataProcessingService::runChromatographPipelineForMultiple(
                 group.sampleDatas[0].stages.append(stg);
             }
         }
+        DEBUG_LOG << "Chromatograph batch timing: pairwise difference phase" << pairwisePhaseTimer.elapsed() << "ms";
     }
 
+    DEBUG_LOG << "Chromatograph batch timing: total" << batchTotalTimer.elapsed() << "ms";
     return batchResults;
 }
 

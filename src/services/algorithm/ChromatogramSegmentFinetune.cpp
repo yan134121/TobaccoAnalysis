@@ -1,3 +1,10 @@
+/**
+ * 对齐后分段边界微调 —— 对应仓库内 色谱处理算法/04_对齐后微调边界/finetuned_bounds_results.m
+ * - 硬约束：第 s 段起点 ∈ (上一段已微调起点, 下一段「模板」起点)，与 MATLAB 中 seg_starts(s±1) 一致
+ * - 用户范围：old_start ± adjustRangeHalfWidth（MATLAB adjust_range_default = [-5,5] 时即 ±5）
+ * - 在 [L,R] 内取 chrom 最小值点为新的段起点；再按 trapz(x时间, y强度) 重算各段面积
+ * 若需与 MATLAB「Excel→seg_<ref>.mat」完全一致的分段模板，请使用参数 chromExternalSegmentStartsFile（每行 1-based 起点）
+ */
 #include "ChromatogramSegmentFinetune.h"
 
 #include <QtMath>

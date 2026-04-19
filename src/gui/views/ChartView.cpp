@@ -539,6 +539,29 @@ void ChartView::highlightGraph(const QString &name)
     m_plot->replot();
 }
 
+void ChartView::addVerticalLines(const QVector<double>& xWorld, const QColor& color)
+{
+    if (!m_plot || xWorld.isEmpty())
+        return;
+    const double y0 = m_plot->yAxis->range().lower;
+    const double y1 = m_plot->yAxis->range().upper;
+    QColor c = color;
+    if (c.alpha() == 255)
+        c.setAlpha(140);
+    const QPen pen(c, 1, Qt::DashLine);
+    for (double xv : xWorld) {
+        auto* line = new QCPItemLine(m_plot);
+        line->start->setType(QCPItemPosition::ptPlotCoords);
+        line->start->setAxes(m_plot->xAxis, m_plot->yAxis);
+        line->start->setCoords(xv, y0);
+        line->end->setType(QCPItemPosition::ptPlotCoords);
+        line->end->setAxes(m_plot->xAxis, m_plot->yAxis);
+        line->end->setCoords(xv, y1);
+        line->setPen(pen);
+        m_verticalLineItems.append(line);
+    }
+}
+
 void ChartView::clearGraphs()
 {
     DEBUG_LOG << "ChartView::clearGraphs - Clearing all graphs";
@@ -547,6 +570,12 @@ void ChartView::clearGraphs()
         DEBUG_LOG << "ChartView::clearGraphs - ERROR: m_plot is null!";
         return;
     }
+
+    for (QCPItemLine* line : m_verticalLineItems) {
+        if (line)
+            m_plot->removeItem(line);
+    }
+    m_verticalLineItems.clear();
     
     m_plot->clearGraphs();
     m_sampleGraphs.clear(); // 清除样本ID和图形的映射关系

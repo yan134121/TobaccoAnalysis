@@ -33,6 +33,9 @@ public:
     // --- 【关键】添加新的公共接口 ---
     void addCurve(QSharedPointer<Curve> curve);
 
+    /** 在当前坐标轴范围内绘制竖线（用于分段边界）；clearGraphs 时一并清除 */
+    void addVerticalLines(const QVector<double>& xWorld, const QColor& color = QColor(80, 80, 80, 160));
+
     // void addGraph(const QVector<double>& x, const QVector<double>& y, const QString& name, const QColor& color = Qt::blue, int sampleId);
     void addGraph(const QVector<double>& x, const QVector<double>& y, const QString& name, const QColor& color = Qt::blue, int sampleId =-1);
     void highlightGraph(const QString& name);
@@ -215,6 +218,8 @@ private:
     void clonePlotTo(ChartView* target) const;
 
     QVector<QPointer<QWidget>> m_detachedWindows;
+
+    QVector<QCPItemLine*> m_verticalLineItems;
 };
 
 #endif // CHARTVIEW_H

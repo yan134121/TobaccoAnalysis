@@ -1,3 +1,9 @@
+/**
+ * PeakSeg-COW 峰对齐 —— 对应 色谱处理算法/03_色谱对齐/my_cow_align_peakseg_V5_auto.m
+ * - movmean 平滑参考、多区间 my_findpeaks 式峰检测、峰簇聚类与谷值分段
+ * - 段内 DP：代价 1−ρ，my_linear_resample 与 my_corr 与 MATLAB 实现一致（见本文件内注释）
+ * 批处理脚本 Sepu_align_batch.m 中的 opts（ranges/rangeProm）在应用层由 peakSegMatlabSepuAlignBatchParams() 注入（见 DataProcessingService.cpp）
+ */
 #include "PeakSegCOWAlignment.h"
 
 #include "core/entities/Curve.h"

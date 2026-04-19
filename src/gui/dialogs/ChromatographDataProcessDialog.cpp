@@ -26,6 +26,47 @@
 #include <QStyle>
 #include <QStyleOptionViewItem>
 #include <QInputDialog>
+#include <QSizePolicy>
+
+#include "services/algorithm/ChromatogramCalibTables.h"
+
+namespace {
+
+QSharedPointer<Curve> chromFinetunePlotBaseCurve(const SampleDataFlexible& sample, int referenceSampleId)
+{
+    QSharedPointer<Curve> curv;
+    for (const StageData& st : sample.stages) {
+        if (st.stageName == StageName::PeakAlignment && st.curve) {
+            curv = st.curve;
+            break;
+        }
+    }
+    if (curv.isNull() && sample.sampleId == referenceSampleId) {
+        for (const StageData& st : sample.stages) {
+            if (st.stageName == StageName::Clip && st.curve) {
+                curv = st.curve;
+                break;
+            }
+        }
+    }
+    return curv;
+}
+
+QVector<double> finetuneBoundaryXWorld(const QSharedPointer<Curve>& curve, const QVariantList& idx1List)
+{
+    QVector<double> out;
+    if (curve.isNull() || idx1List.isEmpty())
+        return out;
+    const QVector<QPointF> pts = curve->data();
+    for (const QVariant& v : idx1List) {
+        const int i1 = v.toInt();
+        if (i1 >= 1 && i1 <= pts.size())
+            out.append(pts[i1 - 1].x());
+    }
+    return out;
+}
+
+} // namespace
 
 ChromatographDataProcessDialog::ChromatographDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
     QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
@@ -418,10 +459,12 @@ void ChromatographDataProcessDialog::addSampleCurve(int sampleId, const QString&
         
         DEBUG_LOG << "ChromatographDataProcessDialog::addSampleCurve - ID:" << sampleId << "Name:" << sampleName;
         
-        // 将样本加入“可见曲线”集合，不影响被选中样本集合
+        const int prevVisible = m_visibleSamples.size();
+        // 将样本加入“可见曲线”集合（与主导航、列表勾选共用）
         m_visibleSamples.insert(sampleId);
         DEBUG_LOG << "当前可见样本数:" << m_visibleSamples.size();
         updateSelectedSamplesList();
+        promptChromatographReferenceSampleIfNeeded(prevVisible);
         
         // 不在此处触发绘图；统一由 selectionChangedByType 路由中合并刷新
         
@@ -550,6 +593,75 @@ QString ChromatographDataProcessDialog::buildSampleDisplayName(int sampleId)
         displayName = QString("样本 %1").arg(sampleId);
     }
     return displayName;
+}
+
+void ChromatographDataProcessDialog::ensureCalibMapForLegendTags() const
+{
+    const QString p = m_currentParams.chromCalibSampleMapPath.trimmed();
+    if (p.isEmpty()) {
+        m_calibSampleToCalibMapCache.clear();
+        m_calibMapCachePath.clear();
+        return;
+    }
+    if (p == m_calibMapCachePath && !m_calibSampleToCalibMapCache.isEmpty())
+        return;
+    QString err;
+    m_calibSampleToCalibMapCache.clear();
+    ChromatogramCalibTables::loadSampleToCalibMapWide(p, m_calibSampleToCalibMapCache, err);
+    m_calibMapCachePath = p;
+}
+
+QString ChromatographDataProcessDialog::chromatographLegendExtraTags(const SampleIdentifier& sid) const
+{
+    ensureCalibMapForLegendTags();
+    QString extra;
+    const QString sc = sid.shortCode.trimmed();
+    if (sc.startsWith(QStringLiteral("0000_")))
+        extra += QStringLiteral("（基准）");
+    if (!sc.isEmpty() && m_calibSampleToCalibMapCache.contains(sc))
+        extra += QStringLiteral("（标定表）");
+    return extra;
+}
+
+void ChromatographDataProcessDialog::promptChromatographReferenceSampleIfNeeded(int previousVisibleCount)
+{
+    const int newVisibleCount = m_visibleSamples.size();
+    if (newVisibleCount < 2 || newVisibleCount <= previousVisibleCount)
+        return;
+
+    QList<int> ids = m_visibleSamples.values();
+    std::sort(ids.begin(), ids.end());
+
+    QStringList labels;
+    QMap<QString, int> labelToId;
+    for (int id : ids) {
+        QString name = buildSampleDisplayName(id);
+        if (name.trimmed().isEmpty())
+            name = QStringLiteral("样本 %1").arg(id);
+        const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
+        labels.append(label);
+        labelToId.insert(label, id);
+    }
+
+    int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
+    if (currentIdx < 0)
+        currentIdx = 0;
+
+    bool ok = false;
+    const QString selected = QInputDialog::getItem(
+        this,
+        tr("选择色谱对齐参考样本"),
+        tr("请在当前可见曲线中选择参考样本（对齐模板）："),
+        labels,
+        currentIdx,
+        false,
+        &ok);
+
+    if (ok && !selected.isEmpty()) {
+        const int refId = labelToId.value(selected, -1);
+        if (refId > 0)
+            m_currentParams.referenceSampleId = refId;
+    }
 }
 
 void ChromatographDataProcessDialog::setupUI()
@@ -701,22 +813,26 @@ void ChromatographDataProcessDialog::setupMiddlePanel()
     m_chartView2 = new ChartView();
     m_chartView3 = new ChartView();
     m_chartView4 = new ChartView();
-    // m_chartView5 = new ChartView();
-    if (!m_chartView1 
-        || !m_chartView2 
+    m_chartView5 = new ChartView();
+    if (!m_chartView1
+        || !m_chartView2
         || !m_chartView3
         || !m_chartView4
-    ) {
+        || !m_chartView5) {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ERROR: Failed to create ChartView!";
     } else {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ChartView created successfully";
     }
 
-    // 将 ChartView 添加到 2x2 网格中：左上原始，右上基线校正，左下裁剪，右下色谱对齐
+    // 3x2 网格：第一行 原始 / 基线 / 裁剪；第二行 对齐 / 微调边界 / 占位
     m_middleLayout->addWidget(m_chartView1, 0, 0);
     m_middleLayout->addWidget(m_chartView2, 0, 1);
-    m_middleLayout->addWidget(m_chartView3, 1, 0);
-    m_middleLayout->addWidget(m_chartView4, 1, 1);
+    m_middleLayout->addWidget(m_chartView3, 0, 2);
+    m_middleLayout->addWidget(m_chartView4, 1, 0);
+    m_middleLayout->addWidget(m_chartView5, 1, 1);
+    QWidget* plotGridSpacer = new QWidget(m_middlePanel);
+    plotGridSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_middleLayout->addWidget(plotGridSpacer, 1, 2);
 
     // m_legendPanel = new QWidget();
     // m_legendLayout = new QVBoxLayout(m_legendPanel);
@@ -857,15 +973,10 @@ void ChromatographDataProcessDialog::setupConnections()
                     bool first = !m_selectedSamples.contains(sampleId);
                     m_selectedSamples.insert(sampleId, name);
                     if (first) {
-                        m_visibleSamples.insert(sampleId);
                         addSampleCurve(sampleId, name);
                     }
                     updateSelectedSamplesList();
-                    if (origin == QStringLiteral("BatchSelect")) {
-                        scheduleRedraw();
-                    } else {
-                        scheduleRedraw();
-                    }
+                    scheduleRedraw();
                 } else {
                     // 从“被选中样本”集合移除；同时移除可见集合与曲线
                     m_selectedSamples.remove(sampleId);
@@ -890,6 +1001,7 @@ void ChromatographDataProcessDialog::onClearCurvesClicked()
     if (m_chartView2) m_chartView2->clearGraphs();
     if (m_chartView3) m_chartView3->clearGraphs();
     if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();
@@ -973,7 +1085,10 @@ void ChromatographDataProcessDialog::updateSelectedStatsInfo()
     if (!m_selectedStatsLabel) return;
     int selectedCount = m_selectedSamples.size();
     int visibleCount = m_visibleSamples.size();
-    m_selectedStatsLabel->setText(tr("已选中样本: %1 / 绘图样本: %2").arg(selectedCount).arg(visibleCount));
+    QString t = tr("已选中样本: %1 / 绘图样本: %2").arg(selectedCount).arg(visibleCount);
+    if (m_recalcInProgress)
+        t += tr("  · 计算中…");
+    m_selectedStatsLabel->setText(t);
 }
 
 // 统一调度一次重绘与图例刷新，避免同一事件内重复调用造成卡顿
@@ -1047,43 +1162,8 @@ void ChromatographDataProcessDialog::onSelectedSamplesListItemChanged(QListWidge
 
     const int newVisibleCount = m_visibleSamples.size();
 
-    // 按要求：当可见曲线达到2条及以上时，每次新增都让用户选择参考曲线
-    if (isChecked && newVisibleCount >= 2 && newVisibleCount > oldVisibleCount) {
-        QList<int> ids = m_visibleSamples.values();
-        std::sort(ids.begin(), ids.end());
-
-        QStringList labels;
-        QMap<QString, int> labelToId;
-        for (int id : ids) {
-            QString name = buildSampleDisplayName(id);
-            if (name.trimmed().isEmpty()) {
-                name = QStringLiteral("样本 %1").arg(id);
-            }
-            const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
-            labels.append(label);
-            labelToId.insert(label, id);
-        }
-
-        int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
-        if (currentIdx < 0) currentIdx = 0;
-
-        bool ok = false;
-        const QString selected = QInputDialog::getItem(
-            this,
-            tr("选择色谱对齐参考样本"),
-            tr("请在当前可见曲线中选择参考样本："),
-            labels,
-            currentIdx,
-            false,
-            &ok);
-
-        if (ok && !selected.isEmpty()) {
-            const int refId = labelToId.value(selected, -1);
-            if (refId > 0) {
-                m_currentParams.referenceSampleId = refId;
-            }
-        }
-    }
+    if (isChecked && newVisibleCount >= 2 && newVisibleCount > oldVisibleCount)
+        promptChromatographReferenceSampleIfNeeded(oldVisibleCount);
 
     scheduleRedraw();
     updateSelectedStatsInfo();
@@ -1940,6 +2020,7 @@ void ChromatographDataProcessDialog::recalculateAndUpdatePlot()
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_parameterButton->setEnabled(false);
     m_recalcInProgress = true;
+    updateSelectedStatsInfo();
 
     // --- 2. 获取所有需要处理的样本ID列表 ---
     // 仅处理左侧“选中样本”列表中被勾选（可见）的样本
@@ -1953,10 +2034,13 @@ void ChromatographDataProcessDialog::recalculateAndUpdatePlot()
         if (m_chartView1) m_chartView1->clearGraphs();
         if (m_chartView2) m_chartView2->clearGraphs();
         if (m_chartView3) m_chartView3->clearGraphs();
+        if (m_chartView4) m_chartView4->clearGraphs();
+        if (m_chartView5) m_chartView5->clearGraphs();
         updateLegendPanel();
         QApplication::restoreOverrideCursor();
         m_parameterButton->setEnabled(true);
         m_recalcInProgress = false;
+        updateSelectedStatsInfo();
 
         if (m_recalcPending) {
             m_recalcPending = false;
@@ -2032,6 +2116,7 @@ void ChromatographDataProcessDialog::onCalculationFinished()
         QApplication::restoreOverrideCursor();
         m_parameterButton->setEnabled(true);
         m_recalcInProgress = false;
+        updateSelectedStatsInfo();
         return;
     }
 
@@ -2042,8 +2127,14 @@ void ChromatographDataProcessDialog::onCalculationFinished()
 
     DEBUG_LOG << "BatchGroupData size:" << m_stageDataCache.size();
 
-    // b. 调用绘图更新
-    updatePlot(); 
+    // b. 调用绘图更新（异常时仍恢复光标，避免一直显示等待）
+    try {
+        updatePlot();
+    } catch (const std::exception& e) {
+        WARNING_LOG << "ChromatographDataProcessDialog::updatePlot exception:" << e.what();
+    } catch (...) {
+        WARNING_LOG << "ChromatographDataProcessDialog::updatePlot unknown exception";
+    }
 
     // --- 2. 启用“计算差异度”按钮（至少两条可比较曲线） ---
     int comparableCurveCount = 0;
@@ -2134,6 +2225,7 @@ void ChromatographDataProcessDialog::onCalculationFinished()
     QApplication::restoreOverrideCursor();
     m_parameterButton->setEnabled(true);
     m_recalcInProgress = false;
+    updateSelectedStatsInfo();
 
     if (m_recalcPending) {
         m_recalcPending = false;
@@ -2166,6 +2258,8 @@ void ChromatographDataProcessDialog::updatePlot()
         m_chartView1->clearGraphs();
         m_chartView2->clearGraphs();
         m_chartView3->clearGraphs();
+        m_chartView4->clearGraphs();
+        m_chartView5->clearGraphs();
         return;
     }
 
@@ -2200,7 +2294,8 @@ void ChromatographDataProcessDialog::updatePlot()
                                                 .arg(sid.projectName)
                                                 .arg(sid.batchCode)
                                                 .arg(sid.shortCode)
-                                                .arg(sid.parallelNo);
+                                                .arg(sid.parallelNo)
+                                                + chromatographLegendExtraTags(sid);
                     rawCurve->setName(legendName);
                     rawCurve->setColor(sampleColorMap.value(sampleId, QColor(200, 30, 30)));
                     m_chartView1->addCurve(rawCurve);
@@ -2228,6 +2323,11 @@ void ChromatographDataProcessDialog::updatePlot()
     m_chartView4->setLabels(tr("响应时间"), tr("强度"));
     m_chartView4->setPlotTitle(QStringLiteral("色谱对齐"));
 
+    // --- 5. 对齐后微调边界（曲线 + 分段竖线）---
+    m_chartView5->clearGraphs();
+    m_chartView5->setLabels(tr("响应时间"), tr("强度"));
+    m_chartView5->setPlotTitle(tr("对齐后微调边界"));
+
     for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
         const SampleGroup& group = groupIt.value();
 
@@ -2241,7 +2341,8 @@ void ChromatographDataProcessDialog::updatePlot()
                                           .arg(sid.projectName)
                                           .arg(sid.batchCode)
                                           .arg(sid.shortCode)
-                                          .arg(sid.parallelNo);
+                                          .arg(sid.parallelNo)
+                                          + chromatographLegendExtraTags(sid);
             const QColor color = sampleColorMap.value(sampleId, QColor(200, 30, 30));
 
             for (const auto& stage : sample.stages) {
@@ -2317,12 +2418,80 @@ void ChromatographDataProcessDialog::updatePlot()
         }
     }
 
+    // --- 填充【对齐后微调边界】：与后台 SegmentComparison 一致（先画曲线再画竖线以便坐标轴范围正确）---
+    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+        const SampleGroup& group = groupIt.value();
+        for (const auto& sample : group.sampleDatas) {
+            const int sampleId = sample.sampleId;
+            if (!m_visibleSamples.contains(sampleId)) continue;
+
+            QVariantList segIdxList;
+            for (const StageData& st : sample.stages) {
+                if (st.stageName != StageName::SegmentComparison) continue;
+                const QVariantList vl = st.metrics.value(QStringLiteral("seg_starts_finetuned_1based")).toList();
+                if (!vl.isEmpty()) {
+                    segIdxList = vl;
+                    break;
+                }
+            }
+            if (segIdxList.isEmpty()) continue;
+
+            const QSharedPointer<Curve> base = chromFinetunePlotBaseCurve(sample, m_currentParams.referenceSampleId);
+            if (base.isNull()) continue;
+
+            SingleTobaccoSampleDAO daoFt;
+            SampleIdentifier sidFt = daoFt.getSampleIdentifierById(sampleId);
+            const QString legend5 = QString("%1-%2-%3-%4")
+                                         .arg(sidFt.projectName)
+                                         .arg(sidFt.batchCode)
+                                         .arg(sidFt.shortCode)
+                                         .arg(sidFt.parallelNo)
+                                         + chromatographLegendExtraTags(sidFt);
+            const QColor colorFt = sampleColorMap.value(sampleId, QColor(200, 30, 30));
+
+            QSharedPointer<Curve> dup = QSharedPointer<Curve>::create(base->data(), legend5);
+            dup->setColor(colorFt);
+            dup->setSampleId(sampleId);
+            dup->setLineStyle(base->lineStyle());
+            m_chartView5->addCurve(dup);
+        }
+    }
+    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+        const SampleGroup& group = groupIt.value();
+        for (const auto& sample : group.sampleDatas) {
+            const int sampleId = sample.sampleId;
+            if (!m_visibleSamples.contains(sampleId)) continue;
+
+            QVariantList segIdxList;
+            for (const StageData& st : sample.stages) {
+                if (st.stageName != StageName::SegmentComparison) continue;
+                const QVariantList vl = st.metrics.value(QStringLiteral("seg_starts_finetuned_1based")).toList();
+                if (!vl.isEmpty()) {
+                    segIdxList = vl;
+                    break;
+                }
+            }
+            if (segIdxList.isEmpty()) continue;
+
+            const QSharedPointer<Curve> base = chromFinetunePlotBaseCurve(sample, m_currentParams.referenceSampleId);
+            if (base.isNull()) continue;
+
+            const QVector<double> xMarks = finetuneBoundaryXWorld(base, segIdxList);
+            if (xMarks.isEmpty()) continue;
+            QColor lineColor = sampleColorMap.value(sampleId, QColor(200, 30, 30));
+            lineColor.setAlpha(90);
+            m_chartView5->addVerticalLines(xMarks, lineColor);
+        }
+    }
+
     m_chartView2->setLegendVisible(false);
     m_chartView2->replot();
     m_chartView3->setLegendVisible(false);
     m_chartView3->replot();
     m_chartView4->setLegendVisible(false);
     m_chartView4->replot();
+    m_chartView5->setLegendVisible(false);
+    m_chartView5->replot();
 
 
     // // --- 2. 更新【归一化】图表 (m_chartView3) ---
@@ -2461,7 +2630,9 @@ void ChromatographDataProcessDialog::updateLegendPanel()
 
     int colorIndex = 0;
     for (int sampleId : m_selectedSamples.keys()) {
-        QString legendText = buildSampleDisplayName(sampleId);
+        SingleTobaccoSampleDAO sidDao;
+        const SampleIdentifier sid = sidDao.getSampleIdentifierById(sampleId);
+        QString legendText = buildSampleDisplayName(sampleId) + chromatographLegendExtraTags(sid);
 
         QLabel* label = new QLabel(legendText);
         QColor color = ColorUtils::setCurveColor(colorIndex);
@@ -2515,38 +2686,8 @@ void ChromatographDataProcessDialog::onItemChanged(QTreeWidgetItem *item, int co
     updateSelectedSamplesList();
 
     const int newVisibleCount = m_visibleSamples.size();
-    if (isChecked && newVisibleCount >= 2 && newVisibleCount > oldVisibleCount) {
-        QList<int> ids = m_visibleSamples.values();
-        std::sort(ids.begin(), ids.end());
-
-        QStringList labels;
-        QMap<QString, int> labelToId;
-        for (int id : ids) {
-            QString name = buildSampleDisplayName(id);
-            if (name.trimmed().isEmpty()) name = QStringLiteral("样本 %1").arg(id);
-            const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
-            labels.append(label);
-            labelToId.insert(label, id);
-        }
-
-        int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
-        if (currentIdx < 0) currentIdx = 0;
-
-        bool ok = false;
-        const QString selected = QInputDialog::getItem(
-            this,
-            tr("选择色谱对齐参考样本"),
-            tr("请在当前可见曲线中选择参考样本："),
-            labels,
-            currentIdx,
-            false,
-            &ok);
-
-        if (ok && !selected.isEmpty()) {
-            const int refId = labelToId.value(selected, -1);
-            if (refId > 0) m_currentParams.referenceSampleId = refId;
-        }
-    }
+    if (isChecked && newVisibleCount >= 2 && newVisibleCount > oldVisibleCount)
+        promptChromatographReferenceSampleIfNeeded(oldVisibleCount);
 
     scheduleRedraw();
     updateSelectedStatsInfo();
@@ -2590,6 +2731,9 @@ void ChromatographDataProcessDialog::onMainNavigatorSampleSelectionChanged(int s
                 m_suppressItemChanged = true;
                 existing->setCheckState(0, Qt::Checked);
                 m_suppressItemChanged = false;
+                const QString dn = buildSampleDisplayName(sampleId);
+                m_selectedSamples.insert(sampleId, dn);
+                addSampleCurve(sampleId, dn);
                 loadSampleCurve(sampleId);
                 return;
             }
@@ -2628,9 +2772,9 @@ void ChromatographDataProcessDialog::onMainNavigatorSampleSelectionChanged(int s
             sampleItem->setCheckState(0, Qt::Checked);
             m_suppressItemChanged = false;
 
-            // 同步选中样本集合与左侧“选中样本”列表（使用完整名称）
+            // 同步选中样本集合并加入可见曲线（与全局选择、addSampleCurve 逻辑一致）
             m_selectedSamples.insert(sampleId, sampleFullName);
-            updateSelectedSamplesList();
+            addSampleCurve(sampleId, sampleFullName);
 
             loadSampleCurve(sampleId);
         } else {

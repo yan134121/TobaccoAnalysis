@@ -11,6 +11,7 @@
 #include <QVector>
 #include <QCursor>
 #include <QMouseEvent>
+#include <QShowEvent>
 #include <QMap>
 #include <QPointer>
 
@@ -104,6 +105,10 @@ public:
     void exportImage();
     void exportData();
     void openInSeparateWindow();
+
+    /** 独立放大窗口内使用：工具栏常驻显示，避免悬停显示时在移向按钮过程中被隐藏 */
+    void setDetachedChartMode(bool detached);
+
 public slots:
     void setToolMode(const QString& toolId);
     void zoomIn();
@@ -120,6 +125,7 @@ protected:
     void enterEvent(QEvent *event) override;  // 鼠标进入事件
     void leaveEvent(QEvent *event) override;  // 鼠标离开事件
     void resizeEvent(QResizeEvent *event) override;  // 窗口大小变化事件
+    void showEvent(QShowEvent *event) override;      // 显示时校正悬浮工具栏位置（独立窗口居中顶栏）
     // // 【必须声明这三个函数来重写 QWidget 的虚函数】
     // void mousePressEvent(QMouseEvent *event) override;
     // void mouseMoveEvent(QMouseEvent *event) override;
@@ -216,6 +222,11 @@ private:
     // 根据 sampleId 为曲线应用可区分的样式（线型/点型/宽度）
     void applyDistinctStyle(QCPGraph* graph, int sampleId, const QColor& baseColor);
     void clonePlotTo(ChartView* target) const;
+
+    /** 将悬浮工具栏置于本控件宽度水平居中、距顶 5px */
+    void updateToolBarPosition();
+
+    bool m_detachedChartMode = false;
 
     QVector<QPointer<QWidget>> m_detachedWindows;
 

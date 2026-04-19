@@ -259,23 +259,12 @@ m_toolBar->setStyleSheet(
     "QToolButton:checked { background-color: rgba(160, 160, 160, 220); }" // 选中时背景加深突出显示
 );
 
-// 调整大小以适应内容
-m_toolBar->adjustSize();
-
-// 计算工具栏位置，放在中间上方
-QSize toolBarSize = m_toolBar->sizeHint();
-int x = (width() - toolBarSize.width()) / 2;
-int y = 5; // 距离顶部5像素
-m_toolBar->move(x, y);
-m_toolBar->raise(); // 确保工具栏在最上层
+updateToolBarPosition();
 
 // 添加窗口大小变化事件处理，以便重新计算工具栏位置
 connect(this, &ChartView::resized, this, [this]() {
     if (m_toolBar && m_toolBar->isVisible()) {
-        QSize toolBarSize = m_toolBar->sizeHint();
-        int x = (width() - toolBarSize.width()) / 2;
-        int y = 5;
-        m_toolBar->move(x, y);
+        updateToolBarPosition();
     }
 });
 
@@ -1446,8 +1435,8 @@ void ChartView::enterEvent(QEvent *event)
 
 void ChartView::leaveEvent(QEvent *event)
 {
-    // 鼠标离开时隐藏工具栏
-    if (m_toolBar) {
+    // 独立放大窗口内工具栏常驻；主界面内鼠标离开时隐藏（避免遮挡）
+    if (!m_detachedChartMode && m_toolBar) {
         m_toolBar->hide();
     }
     // 鼠标离开绘图区域，清理悬停效果
@@ -1464,6 +1453,27 @@ void ChartView::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     emit resized();
+}
+
+void ChartView::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    if (m_detachedChartMode) {
+        updateToolBarPosition();
+    }
+}
+
+void ChartView::updateToolBarPosition()
+{
+    if (!m_toolBar) {
+        return;
+    }
+    m_toolBar->adjustSize();
+    const QSize sz = m_toolBar->sizeHint();
+    const int x = qMax(0, (width() - sz.width()) / 2);
+    constexpr int kTopMargin = 5;
+    m_toolBar->move(x, kTopMargin);
+    m_toolBar->raise();
 }
 
 
@@ -2019,6 +2029,20 @@ void ChartView::clonePlotTo(ChartView* target) const
     target->m_plot->replot();
 }
 
+void ChartView::setDetachedChartMode(bool detached)
+{
+    m_detachedChartMode = detached;
+    if (!detached)
+        return;
+    if (m_toolBar) {
+        m_toolBar->show();
+        updateToolBarPosition();
+    }
+    if (m_openWindowBtn) {
+        m_openWindowBtn->setVisible(false);
+    }
+}
+
 void ChartView::openInSeparateWindow()
 {
     QMainWindow* window = new QMainWindow();
@@ -2028,6 +2052,7 @@ void ChartView::openInSeparateWindow()
 
     ChartView* detachedChart = new ChartView(window);
     window->setCentralWidget(detachedChart);
+    detachedChart->setDetachedChartMode(true);
 
     clonePlotTo(detachedChart);
 

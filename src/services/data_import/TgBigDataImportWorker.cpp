@@ -1,5 +1,6 @@
 
 #include "services/data_import/TgBigDataImportWorker.h"
+#include "services/data_import/ImportSampleNaming.h"
 #include "core/entities/TgBigData.h"
 #include "data_access/TgBigDataDAO.h"
 #include "data_access/SingleTobaccoSampleDAO.h"
@@ -341,14 +342,8 @@ int TgBigDataImportWorker::createOrGetSample(const QString& fileName)
                 // 设置默认年份为当前年份，避免年份验证错误
                 newSample.setYear(now.date().year());
                 
-                // 设置样本名称
-                QString sampleName = QString("%1-%2-%3-%4").arg(
-                    newSample.getProjectName(),
-                    newSample.getBatchCode(),
-                    shortCode,
-                    QString::number(parallelNo)
-                );
-                newSample.setSampleName(sampleName);
+                newSample.setSampleName(ImportSampleNaming::makeImportedSampleName(
+                    newSample.getBatchCode(), shortCode, parallelNo, m_detectDate));
                 
                 DEBUG_LOG << "创建新大热重样本:" 
                          << "short_code=" << shortCode

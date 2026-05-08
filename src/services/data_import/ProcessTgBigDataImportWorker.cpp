@@ -1,4 +1,5 @@
 #include "services/data_import/ProcessTgBigDataImportWorker.h"
+#include "services/data_import/ImportSampleNaming.h"
 #include "core/entities/ProcessTgBigData.h"
 #include "data_access/ProcessTgBigDataDAO.h"
 #include "data_access/SingleTobaccoSampleDAO.h"
@@ -18,6 +19,7 @@
 #include <QProgressDialog>  // QProgressDialog
 #include <QDirIterator>
 #include <QJsonObject>
+#include <QDate>
 
 
 ProcessTgBigDataImportWorker::ProcessTgBigDataImportWorker(QObject* parent)
@@ -42,6 +44,7 @@ void ProcessTgBigDataImportWorker::setParameters(const QString& dirPath, AppInit
     // 清空可选覆盖的项目与批次（旧接口默认不覆盖）
     m_projectName.clear();
     m_batchCode.clear();
+    m_detectDate = QDate::currentDate();
     // 清空列覆盖（旧接口默认沿用当前逻辑）
     m_useCustomColumns = false;
     m_temperatureColumn1Based = -1;
@@ -57,6 +60,7 @@ void ProcessTgBigDataImportWorker::setParameters(const QString& dirPath, const Q
     // 记录用户在导入前确认/修改的项目名称与批次代码
     m_projectName = projectName.trimmed();
     m_batchCode = batchCode.trimmed();
+    m_detectDate = QDate::currentDate();
     // 清空列覆盖（该接口未启用列选择）
     m_useCustomColumns = false;
     m_temperatureColumn1Based = -1;
@@ -69,13 +73,15 @@ void ProcessTgBigDataImportWorker::setParameters(const QString& dirPath,
                                                 bool useCustomColumns,
                                                 int temperatureColumn1Based,
                                                 int dataColumn1Based,
-                                                AppInitializer* appInitializer)
+                                                AppInitializer* appInitializer,
+                                                const QDate& detectDate)
 {
     m_dirPath = dirPath;
     m_appInitializer = appInitializer;
     m_stopped = false;
     m_projectName = projectName.trimmed();
     m_batchCode = batchCode.trimmed();
+    m_detectDate = detectDate.isValid() ? detectDate : QDate::currentDate();
     m_useCustomColumns = useCustomColumns;
     m_temperatureColumn1Based = temperatureColumn1Based;
     m_dataColumn1Based = dataColumn1Based;
@@ -373,20 +379,13 @@ SingleTobaccoSampleData* ProcessTgBigDataImportWorker::parseSampleInfoFromFilena
             shortCode = prefix + "-YA";  // 如果代码太短，直接使用
         }
         
-        // 构建标准格式的样本名称
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            baseName.split("-")[0],              // 烟牌号 (1906)
-            baseName.split("-")[1],              // 批次代码 (202412040)
-            shortCode,                           // 短代码 (JZ-YA-Z)
-            QString::number(parallelNo)          // 平行样编号 (1)
-        );
-        
-        // 设置样本信息
+        const QString fileBatch = baseName.split("-").value(1);
+        // 设置样本信息（样本显示名不含烟牌号：批次-短码-平行号-YYYYMMDD）
         sample->setProjectName(baseName.split("-")[0]);
-        sample->setBatchCode(baseName.split("-")[1]);
+        sample->setBatchCode(fileBatch);
         sample->setShortCode(shortCode);
         sample->setParallelNo(parallelNo);
-        sample->setSampleName(sampleName);
+        sample->setSampleName(ImportSampleNaming::makeImportedSampleName(fileBatch, shortCode, parallelNo, m_detectDate));
         
         DEBUG_LOG << "解析样本信息(YA括号格式):" 
                  << "烟牌号=" << sample->getProjectName()
@@ -415,20 +414,12 @@ SingleTobaccoSampleData* ProcessTgBigDataImportWorker::parseSampleInfoFromFilena
             shortCode = prefix + "-YZ";  // 如果代码太短，直接使用
         }
         
-        // 构建标准格式的样本名称
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            baseName.split("-")[0],              // 烟牌号 (1906)
-            baseName.split("-")[1],              // 批次代码 (202412040)
-            shortCode,                           // 短代码 (JZ-YZ-Q)
-            QString::number(parallelNo)          // 平行样编号 (1)
-        );
-        
-        // 设置样本信息
+        const QString fileBatch = baseName.split("-").value(1);
         sample->setProjectName(baseName.split("-")[0]);
-        sample->setBatchCode(baseName.split("-")[1]);
+        sample->setBatchCode(fileBatch);
         sample->setShortCode(shortCode);
         sample->setParallelNo(parallelNo);
-        sample->setSampleName(sampleName);
+        sample->setSampleName(ImportSampleNaming::makeImportedSampleName(fileBatch, shortCode, parallelNo, m_detectDate));
         
         DEBUG_LOG << "解析样本信息(YZ括号格式):" 
                  << "烟牌号=" << sample->getProjectName()
@@ -457,20 +448,12 @@ SingleTobaccoSampleData* ProcessTgBigDataImportWorker::parseSampleInfoFromFilena
             shortCode = prefix + "-YS";  // 如果代码太短，直接使用
         }
         
-        // 构建标准格式的样本名称
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            baseName.split("-")[0],              // 烟牌号 (1906)
-            baseName.split("-")[1],              // 批次代码 (202412011)
-            shortCode,                           // 短代码 (JZ-YS-H 或 JZ-YS-Z)
-            QString::number(parallelNo)          // 平行样编号 (1)
-        );
-        
-        // 设置样本信息
+        const QString fileBatch = baseName.split("-").value(1);
         sample->setProjectName(baseName.split("-")[0]);
-        sample->setBatchCode(baseName.split("-")[1]);
+        sample->setBatchCode(fileBatch);
         sample->setShortCode(shortCode);
         sample->setParallelNo(parallelNo);
-        sample->setSampleName(sampleName);
+        sample->setSampleName(ImportSampleNaming::makeImportedSampleName(fileBatch, shortCode, parallelNo, m_detectDate));
         
         DEBUG_LOG << "解析样本信息(YS括号格式):" 
                  << "烟牌号=" << sample->getProjectName()
@@ -499,20 +482,12 @@ SingleTobaccoSampleData* ProcessTgBigDataImportWorker::parseSampleInfoFromFilena
             shortCode = prefix + "-YZ";  // 如果代码太短，直接使用
         }
         
-        // 构建标准格式的样本名称
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            baseName.split("-")[0],              // 烟牌号 (1906)
-            baseName.split("-")[1],              // 批次代码 (202412011)
-            shortCode,                           // 短代码 (JZ-YZ-Z)
-            QString::number(parallelNo)          // 平行样编号 (3)
-        );
-        
-        // 设置样本信息
+        const QString fileBatch = baseName.split("-").value(1);
         sample->setProjectName(baseName.split("-")[0]);
-        sample->setBatchCode(baseName.split("-")[1]);
+        sample->setBatchCode(fileBatch);
         sample->setShortCode(shortCode);
         sample->setParallelNo(parallelNo);
-        sample->setSampleName(sampleName);
+        sample->setSampleName(ImportSampleNaming::makeImportedSampleName(fileBatch, shortCode, parallelNo, m_detectDate));
         
         DEBUG_LOG << "解析样本信息(YZ后缀格式):" 
                  << "烟牌号=" << sample->getProjectName()
@@ -558,20 +533,12 @@ SingleTobaccoSampleData* ProcessTgBigDataImportWorker::parseSampleInfoFromFilena
             }
         }
         
-        // 构建标准格式的样本名称
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            baseName.split("-")[0],              // 烟牌号 (1906)
-            baseName.split("-")[1],              // 批次代码 (202412011)
-            shortCode,                           // 短代码 (CG-H 或 JZ-YS-H)
-            QString::number(parallelNo)          // 平行样编号 (1)
-        );
-        
-        // 设置样本信息
+        const QString fileBatch = baseName.split("-").value(1);
         sample->setProjectName(baseName.split("-")[0]);
-        sample->setBatchCode(baseName.split("-")[1]);
+        sample->setBatchCode(fileBatch);
         sample->setShortCode(shortCode);
         sample->setParallelNo(parallelNo);
-        sample->setSampleName(sampleName);
+        sample->setSampleName(ImportSampleNaming::makeImportedSampleName(fileBatch, shortCode, parallelNo, m_detectDate));
         
         DEBUG_LOG << "解析样本信息(第一种格式):" 
                  << "烟牌号=" << sample->getProjectName()
@@ -635,15 +602,11 @@ SingleTobaccoSampleData* ProcessTgBigDataImportWorker::parseSampleInfoFromFilena
     sample->setShortCode(shortCode);
     sample->setParallelNo(parallelNo);
     
-    // 构建样本名称
-    QString sampleName = QString("%1-%2-%3-%4").arg(
-        sample->getProjectName(),
+    sample->setSampleName(ImportSampleNaming::makeImportedSampleName(
         sample->getBatchCode(),
         sample->getShortCode(),
-        QString::number(sample->getParallelNo())
-    );
-    
-    sample->setSampleName(sampleName);
+        sample->getParallelNo(),
+        m_detectDate));
     
     DEBUG_LOG << "解析样本信息(第二种格式):" 
              << "烟牌号=" << sample->getProjectName()
@@ -677,14 +640,12 @@ int ProcessTgBigDataImportWorker::createOrGetSample(const QString& filename)
     if (!m_batchCode.isEmpty()) {
         parsedSample->setBatchCode(m_batchCode);
     }
-    // 按统一规范重新生成样本名称，确保唯一键一致
-    QString rebuiltName = QString("%1-%2-%3-%4").arg(
-        parsedSample->getProjectName(),
+    parsedSample->setDetectDate(m_detectDate);
+    parsedSample->setSampleName(ImportSampleNaming::makeImportedSampleName(
         parsedSample->getBatchCode(),
         parsedSample->getShortCode(),
-        QString::number(parsedSample->getParallelNo())
-    );
-    parsedSample->setSampleName(rebuiltName);
+        parsedSample->getParallelNo(),
+        m_detectDate));
     
     
      // 使用查询样本

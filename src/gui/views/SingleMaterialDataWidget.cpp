@@ -61,6 +61,7 @@
 #include <QEventLoop>
 #include <QTextStream>
 #include <QDateEdit>
+#include <QDate>
 #include <QTimer>
 #include <QApplication>
 #include <QThread>
@@ -1065,6 +1066,10 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     QLineEdit batchCodeEdit;
     batchCodeEdit.setText(defaultBatchCode);
     formLayout->addRow(tr("批次代码:"), &batchCodeEdit);
+    QDateEdit detectDateEditProc;
+    detectDateEditProc.setCalendarPopup(true);
+    detectDateEditProc.setDate(QDate::currentDate());
+    formLayout->addRow(tr("检测日期:"), &detectDateEditProc);
     layout->addLayout(formLayout);
 
     QJsonObject localImportAttrs_proctgbig = m_importAttributes;
@@ -1088,6 +1093,7 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     m_importAttributes = localImportAttrs_proctgbig;
     const QString projectName = projectNameEdit.text().trimmed();
     const QString batchCode = batchCodeEdit.text().trimmed();
+    const QDate detectDateProc = detectDateEditProc.date();
     if (projectName.isEmpty() || batchCode.isEmpty()) {
         QMessageBox::warning(this, tr("输入不完整"), tr("请填写完整的烟牌号与批次代码。"));
         return;
@@ -1174,7 +1180,7 @@ void SingleMaterialDataWidget::on_importProcessTgBigDataButton_clicked()
     }
     
     // 设置工作线程参数并启动（传递用户确认的项目与批次，用于覆盖解析值）
-    m_processTgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, useCustomColumns, temperatureColumn, dataColumn, m_appInitializer);
+    m_processTgBigDataImportWorker->setParameters(dirPath, projectName, batchCode, useCustomColumns, temperatureColumn, dataColumn, m_appInitializer, detectDateProc);
     m_processTgBigDataImportWorker->setImportAttributes(m_importAttributes);
 
     m_processTgBigDataImportWorker->start();

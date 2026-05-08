@@ -22,6 +22,7 @@
 #include "data_access/DatabaseConnector.h"
 #include "data_access/SingleTobaccoSampleDAO.h"
 #include "services/data_import/ChromatographDataImportWorker.h"
+#include "services/data_import/ImportSampleNaming.h"
 #include "gui/views/SingleMaterialDataWidget.h"
 #include "src/core/AppInitializer.h"
 #include "data_access/ChromatographyDataDAO.h"
@@ -326,14 +327,9 @@ int ChromatographDataImportWorker::createOrGetSample(const QString& shortCode, i
         // 设置默认年份为当前年份，避免年份验证错误
         newSample.setYear(now.date().year());
         
-        // 设置样本名称
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            m_projectName,
-            m_batchCode,
-            shortCode,
-            QString::number(parallelNo)
-        );
-        newSample.setSampleName(sampleName);
+        // 样本显示名：批次-短码-平行号-检测日期(YYYYMMDD)，不含烟牌号
+        newSample.setSampleName(ImportSampleNaming::makeImportedSampleName(
+            m_batchCode, shortCode, parallelNo, m_detectDate));
         
         DEBUG_LOG << "创建新色谱样本:" 
                  << "short_code=" << shortCode

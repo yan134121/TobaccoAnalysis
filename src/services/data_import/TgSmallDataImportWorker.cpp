@@ -1,6 +1,7 @@
 #include "third_party/QXlsx/header/xlsxdocument.h"
 
 #include "services/data_import/TgSmallDataImportWorker.h"
+#include "services/data_import/ImportSampleNaming.h"
 #include "core/entities/TgSmallData.h"
 #include "data_access/TgSmallDataDAO.h"
 #include "data_access/SingleTobaccoSampleDAO.h"
@@ -251,18 +252,15 @@ int TgSmallDataImportWorker::createOrGetSample(const SingleTobaccoSampleData &sa
         
         // 如果历史数据中 sample_name 为空，则按统一规则补全样本名称
         if (existingSample.getSampleName().trimmed().isEmpty()) {
-            QString sampleName = QString("%1-%2-%3-%4").arg(
-                existingSample.getProjectName(),
-                existingSample.getBatchCode(),
-                shortCode,
-                QString::number(existingSample.getParallelNo())
-            );
-            existingSample.setSampleName(sampleName);
+            const QDate nameDate = existingSample.getDetectDate().isValid()
+                ? existingSample.getDetectDate() : m_detectDate;
+            existingSample.setSampleName(ImportSampleNaming::makeImportedSampleName(
+                existingSample.getBatchCode(), shortCode, existingSample.getParallelNo(), nameDate));
             if (!m_singleTobaccoSampleDao->update(existingSample)) {
                 WARNING_LOG << "更新小热重样本名称失败, ID:" << existingId;
             } else {
                 DEBUG_LOG << "补全小热重样本名称, ID:" << existingId
-                          << " sample_name=" << sampleName;
+                          << " sample_name=" << existingSample.getSampleName();
             }
         }
         
@@ -287,14 +285,8 @@ int TgSmallDataImportWorker::createOrGetSample(const SingleTobaccoSampleData &sa
         // 设置默认年份为当前年份，避免年份验证错误
         newSample.setYear(now.date().year());
         
-        // 按统一规范生成样本名称：项目-批次-短码-平行号
-        QString sampleName = QString("%1-%2-%3-%4").arg(
-            newSample.getProjectName(),
-            newSample.getBatchCode(),
-            shortCode,
-            QString::number(newSample.getParallelNo())
-        );
-        newSample.setSampleName(sampleName);
+        newSample.setSampleName(ImportSampleNaming::makeImportedSampleName(
+            newSample.getBatchCode(), shortCode, newSample.getParallelNo(), m_detectDate));
         
         DEBUG_LOG << "创建新小热重样本:" 
                  << "short_code=" << shortCode

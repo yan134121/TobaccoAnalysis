@@ -6,6 +6,7 @@
 #include <QString>
 #include <QSqlDatabase>
 #include <QJsonObject>
+#include <QDate>
 
 #include "core/entities/ProcessTgBigData.h"
 #include "core/entities/SingleTobaccoSampleData.h"
@@ -36,7 +37,8 @@ public:
                        bool useCustomColumns,
                        int temperatureColumn1Based,
                        int dataColumn1Based,
-                       AppInitializer* appInitializer);
+                       AppInitializer* appInitializer,
+                       const QDate& detectDate = QDate());
     void setImportAttributes(const QJsonObject& attrs);
     void stop();
 
@@ -64,6 +66,7 @@ private:
     QMutex m_mutex;
     QString m_projectName;
     QString m_batchCode;
+    QDate m_detectDate;
     QString m_shortCode;
     int m_parallelNo;
 

@@ -1,6 +1,7 @@
 #include "third_party/QXlsx/header/xlsxdocument.h"
 
 #include "services/data_import/TgSmallRawDataImportWorker.h"
+#include "services/data_import/ImportSampleNaming.h"
 #include "core/entities/TgSmallData.h"
 #include "data_access/TgSmallRawDataDAO.h"
 #include "data_access/SingleTobaccoSampleDAO.h"
@@ -214,18 +215,15 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
         }
 
         if (existingSample.getSampleName().trimmed().isEmpty()) {
-            QString sampleName = QString("%1-%2-%3-%4").arg(
-                existingSample.getProjectName(),
-                existingSample.getBatchCode(),
-                shortCode,
-                QString::number(existingSample.getParallelNo()));
-
-            existingSample.setSampleName(sampleName);
+            const QDate nameDate = existingSample.getDetectDate().isValid()
+                ? existingSample.getDetectDate() : m_detectDate;
+            existingSample.setSampleName(ImportSampleNaming::makeImportedSampleName(
+                existingSample.getBatchCode(), shortCode, existingSample.getParallelNo(), nameDate));
             if (!m_singleTobaccoSampleDao->update(existingSample)) {
                 WARNING_LOG << "更新小热重（原始数据）样本名称失败, ID:" << existingId;
             } else {
                 DEBUG_LOG << "补全小热重（原始数据）样本名称, ID:" << existingId
-                          << "newName:" << sampleName;
+                          << "newName:" << existingSample.getSampleName();
             }
         }
 
@@ -241,11 +239,8 @@ int TgSmallRawDataImportWorker::createOrGetSample(const SingleTobaccoSampleData&
     QDateTime now = QDateTime::currentDateTime();
     newSample.setCreatedAt(now);
     newSample.setYear(now.date().year());
-    newSample.setSampleName(QString("%1-%2-%3-%4").arg(
-        newSample.getProjectName(),
-        newSample.getBatchCode(),
-        shortCode,
-        QString::number(newSample.getParallelNo())));
+    newSample.setSampleName(ImportSampleNaming::makeImportedSampleName(
+        newSample.getBatchCode(), shortCode, newSample.getParallelNo(), m_detectDate));
 
     DEBUG_LOG << "创建新小热重（原始数据）样本:"
               << "short_code=" << shortCode

@@ -186,6 +186,8 @@ private:
     ChartView* m_chartView2;
     ChartView* m_chartView3;
     ChartView* m_chartView4;
+    ChartView* m_chartView5;  // 微调后对齐边界
+    ChartView* m_chartView6;  // 归一化分段面积
 
     
     // 右侧控制面板
@@ -273,6 +275,14 @@ DataProcessingService* m_processingService = nullptr; // 指向后台服务
 
     /** 图例后缀：（基准）对应 0000_ 短码 */
     QString chromatographLegendExtraTags(const SampleIdentifier& sid) const;
+
+    // 色谱分段边界检测与面积可视化
+    QVector<int> detectSegmentBoundaries(const QVector<double>& y, int smoothWindow = 15);
+    QVector<int> finetuneBoundaries(const QVector<double>& y, const QVector<int>& rawBounds, int adjustRange = 5);
+    QVector<double> computeSegmentAreas(const QVector<double>& x, const QVector<double>& y, const QVector<int>& bounds);
+    QVector<double> normalizeAreas(const QVector<double>& areas);
+    void updateFinetunedBoundsChart(const QHash<int, QColor>& sampleColorMap);
+    void updateNormalizedAreaChart(const QHash<int, QColor>& sampleColorMap);
 
     // 刷新左侧“选中样本”列表显示
     void updateSelectedSamplesList();

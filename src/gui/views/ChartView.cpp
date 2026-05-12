@@ -528,6 +528,56 @@ void ChartView::highlightGraph(const QString &name)
     m_plot->replot();
 }
 
+void ChartView::addBars(const QVector<double>& x, const QVector<double>& y,
+                        const QString& name, const QColor& color, double width)
+{
+    if (!m_plot || x.isEmpty() || y.isEmpty() || x.size() != y.size())
+        return;
+
+    // 首次添加柱状图时创建分组，后续柱子自动并排排列
+    if (!m_barsGroup) {
+        m_barsGroup = new QCPBarsGroup(m_plot);
+        m_barsGroup->setSpacingType(QCPBarsGroup::stAbsolute);
+        m_barsGroup->setSpacing(2);
+    }
+
+    auto* bars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
+    bars->setData(x, y);
+    bars->setName(name);
+    bars->setBarsGroup(m_barsGroup);
+
+    // 根据分组中柱子数量自动缩放柱宽，避免重叠
+    int barCount = m_barsList.size() + 1;
+    double effectiveWidth = width / barCount;
+    bars->setWidth(effectiveWidth);
+    for (QCPBars* existing : m_barsList)
+        existing->setWidth(effectiveWidth);
+
+    m_barsList.append(bars);
+
+    QColor fillColor = color;
+    fillColor.setAlpha(180);
+    bars->setBrush(QBrush(fillColor));
+    bars->setPen(QPen(color.darker(120)));
+
+    double xMin = *std::min_element(x.begin(), x.end()) - width;
+    double xMax = *std::max_element(x.begin(), x.end()) + width;
+    double yMin = 0.0;
+    double yMax = *std::max_element(y.begin(), y.end()) * 1.1;
+
+    if (m_barsList.size() == 1) {
+        m_plot->xAxis->setRange(xMin, xMax);
+        m_plot->yAxis->setRange(yMin, yMax);
+    } else {
+        m_plot->xAxis->setRange(
+            qMin(m_plot->xAxis->range().lower, xMin),
+            qMax(m_plot->xAxis->range().upper, xMax));
+        m_plot->yAxis->setRange(
+            qMin(m_plot->yAxis->range().lower, yMin),
+            qMax(m_plot->yAxis->range().upper, yMax));
+    }
+}
+
 void ChartView::addVerticalLines(const QVector<double>& xWorld, const QColor& color)
 {
     if (!m_plot || xWorld.isEmpty())
@@ -566,10 +616,18 @@ void ChartView::clearGraphs()
     }
     m_verticalLineItems.clear();
     
+    // 清除柱状图分组（QCPBars 由 clearPlottables 自动释放）
+    for (QCPBars* b : m_barsList)
+        m_plot->removePlottable(b);
+    m_barsList.clear();
+    if (m_barsGroup) {
+        delete m_barsGroup;
+        m_barsGroup = nullptr;
+    }
+
     m_plot->clearGraphs();
-    m_sampleGraphs.clear(); // 清除样本ID和图形的映射关系
-    m_sampleNames.clear();  // 清除样本ID与显示名称的映射
-    // 清理点击标记与坐标文本，避免悬挂
+    m_sampleGraphs.clear();
+    m_sampleNames.clear();
     clearClickMarker();
 
     // 清空曲线时重置手动X范围锁，避免影响后续非裁剪场景

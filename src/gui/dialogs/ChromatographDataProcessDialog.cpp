@@ -27,6 +27,7 @@
 #include <QStyleOptionViewItem>
 #include <QInputDialog>
 #include <QSizePolicy>
+#include <QScrollArea>
 
 ChromatographDataProcessDialog::ChromatographDataProcessDialog(QWidget *parent, AppInitializer* appInitializer, DataNavigator *mainNavigator) :
     QWidget(parent), m_appInitializer(appInitializer), m_mainNavigator(mainNavigator)
@@ -573,44 +574,49 @@ void ChromatographDataProcessDialog::promptChromatographReferenceSampleIfNeeded(
     const int newVisibleCount = m_visibleSamples.size();
     if (newVisibleCount < 2)
         return;
-    // 仅在首次从「少于 2 条可见曲线」变为「不少于 2 条」时询问参考样；
-    // 继续添加第 3、4…条不再弹窗，避免打断选择且防止与主导航勾选状态冲突。
     if (previousVisibleCount >= 2)
         return;
 
-    QList<int> ids = m_visibleSamples.values();
-    std::sort(ids.begin(), ids.end());
+    QTimer::singleShot(0, this, [this]{
+        if (m_visibleSamples.size() < 2)
+            return;
 
-    QStringList labels;
-    QMap<QString, int> labelToId;
-    for (int id : ids) {
-        QString name = buildSampleDisplayName(id);
-        if (name.trimmed().isEmpty())
-            name = QStringLiteral("样本 %1").arg(id);
-        const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
-        labels.append(label);
-        labelToId.insert(label, id);
-    }
+        QList<int> ids = m_visibleSamples.values();
+        std::sort(ids.begin(), ids.end());
 
-    int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
-    if (currentIdx < 0)
-        currentIdx = 0;
+        QStringList labels;
+        QMap<QString, int> labelToId;
+        for (int id : ids) {
+            QString name = buildSampleDisplayName(id);
+            if (name.trimmed().isEmpty())
+                name = QStringLiteral("样本 %1").arg(id);
+            const QString label = QStringLiteral("%1 (ID:%2)").arg(name).arg(id);
+            labels.append(label);
+            labelToId.insert(label, id);
+        }
 
-    bool ok = false;
-    const QString selected = QInputDialog::getItem(
-        this,
-        tr("选择色谱对齐参考样本"),
-        tr("请在当前可见曲线中选择参考样本（对齐模板）："),
-        labels,
-        currentIdx,
-        false,
-        &ok);
+        int currentIdx = ids.indexOf(m_currentParams.referenceSampleId);
+        if (currentIdx < 0)
+            currentIdx = 0;
 
-    if (ok && !selected.isEmpty()) {
-        const int refId = labelToId.value(selected, -1);
-        if (refId > 0)
-            m_currentParams.referenceSampleId = refId;
-    }
+        bool ok = false;
+        const QString selected = QInputDialog::getItem(
+            this,
+            tr("选择色谱对齐参考样本"),
+            tr("请在当前可见曲线中选择参考样本（对齐模板）："),
+            labels,
+            currentIdx,
+            false,
+            &ok);
+
+        if (ok && !selected.isEmpty()) {
+            const int refId = labelToId.value(selected, -1);
+            if (refId > 0 && refId != m_currentParams.referenceSampleId) {
+                m_currentParams.referenceSampleId = refId;
+                scheduleRedraw();
+            }
+        }
+    });
 }
 
 void ChromatographDataProcessDialog::setupUI()
@@ -762,20 +768,25 @@ void ChromatographDataProcessDialog::setupMiddlePanel()
     m_chartView2 = new ChartView();
     m_chartView3 = new ChartView();
     m_chartView4 = new ChartView();
-    if (!m_chartView1
-        || !m_chartView2
-        || !m_chartView3
-        || !m_chartView4) {
+    m_chartView5 = new ChartView();
+    m_chartView6 = new ChartView();
+    if (!m_chartView1 || !m_chartView2 || !m_chartView3
+        || !m_chartView4 || !m_chartView5 || !m_chartView6) {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ERROR: Failed to create ChartView!";
     } else {
         DEBUG_LOG << "ChromatographDataProcessDialog::setupMiddlePanel--VIEW - ChartView created successfully";
     }
 
-    // 2x2：原始数据 / 基线校正 / 裁剪数据 / 色谱对齐
+    // 3x2 网格：原始数据 / 基线校正 / 裁剪数据 / 色谱对齐 / 微调后对齐边界 / 归一化面积
     m_middleLayout->addWidget(m_chartView1, 0, 0);
     m_middleLayout->addWidget(m_chartView2, 0, 1);
     m_middleLayout->addWidget(m_chartView3, 1, 0);
     m_middleLayout->addWidget(m_chartView4, 1, 1);
+    m_middleLayout->addWidget(m_chartView5, 2, 0);
+    m_middleLayout->addWidget(m_chartView6, 2, 1);
+
+    m_chartView5->setPlotTitle(QStringLiteral("微调后对齐边界"));
+    m_chartView6->setPlotTitle(QStringLiteral("归一化分段面积"));
 
     // m_legendPanel = new QWidget();
     // m_legendLayout = new QVBoxLayout(m_legendPanel);
@@ -802,7 +813,14 @@ void ChromatographDataProcessDialog::setupMiddlePanel()
 
     // 使用水平分割器将“绘图区域”和“图例区域”并列，支持用户拖拽调整图例宽度
     QSplitter* plotLegendSplitter = new QSplitter(Qt::Horizontal);
-    plotLegendSplitter->addWidget(m_middlePanel);     // 左侧：绘图区（网格布局）
+    // 将绘图面板包裹在 QScrollArea 中，3x2 布局时可滚动查看下方两个新图表
+    QScrollArea* chartScrollArea = new QScrollArea();
+    chartScrollArea->setWidgetResizable(true);
+    chartScrollArea->setWidget(m_middlePanel);
+    chartScrollArea->setFrameShape(QFrame::NoFrame);
+    m_middlePanel->setMinimumHeight(900);
+
+    plotLegendSplitter->addWidget(chartScrollArea);   // 左侧：可滚动的绘图区
     plotLegendSplitter->addWidget(legendScrollArea);  // 右侧：图例滚动区域
     plotLegendSplitter->setStretchFactor(0, 4);       // 绘图区更宽
     plotLegendSplitter->setStretchFactor(1, 1);       // 图例区相对较窄
@@ -944,6 +962,8 @@ void ChromatographDataProcessDialog::onClearCurvesClicked()
     if (m_chartView2) m_chartView2->clearGraphs();
     if (m_chartView3) m_chartView3->clearGraphs();
     if (m_chartView4) m_chartView4->clearGraphs();
+    if (m_chartView5) m_chartView5->clearGraphs();
+    if (m_chartView6) m_chartView6->clearGraphs();
 
     m_visibleSamples.clear();
     updateLegendPanel();
@@ -1977,6 +1997,8 @@ void ChromatographDataProcessDialog::recalculateAndUpdatePlot()
         if (m_chartView2) m_chartView2->clearGraphs();
         if (m_chartView3) m_chartView3->clearGraphs();
         if (m_chartView4) m_chartView4->clearGraphs();
+        if (m_chartView5) m_chartView5->clearGraphs();
+        if (m_chartView6) m_chartView6->clearGraphs();
         updateLegendPanel();
         QApplication::restoreOverrideCursor();
         m_parameterButton->setEnabled(true);
@@ -2062,8 +2084,34 @@ void ChromatographDataProcessDialog::onCalculationFinished()
     }
 
     // --- 1. 获取并缓存批量结果 ---
-    m_stageDataCache.clear(); // m_stageDataCache 类型需要为 BatchGroupData
-    m_stageDataCache = watcher->result();
+    try {
+        m_stageDataCache.clear();
+        m_stageDataCache = watcher->result();
+    } catch (const std::exception& e) {
+        WARNING_LOG << "ChromatographDataProcessDialog::watcher->result() exception:" << e.what();
+        watcher->deleteLater();
+        QApplication::restoreOverrideCursor();
+        m_parameterButton->setEnabled(true);
+        m_recalcInProgress = false;
+        updateSelectedStatsInfo();
+        if (m_recalcPending) {
+            m_recalcPending = false;
+            QTimer::singleShot(0, this, [this]{ recalculateAndUpdatePlot(); });
+        }
+        return;
+    } catch (...) {
+        WARNING_LOG << "ChromatographDataProcessDialog::watcher->result() unknown exception";
+        watcher->deleteLater();
+        QApplication::restoreOverrideCursor();
+        m_parameterButton->setEnabled(true);
+        m_recalcInProgress = false;
+        updateSelectedStatsInfo();
+        if (m_recalcPending) {
+            m_recalcPending = false;
+            QTimer::singleShot(0, this, [this]{ recalculateAndUpdatePlot(); });
+        }
+        return;
+    }
     watcher->deleteLater();
 
     DEBUG_LOG << "BatchGroupData size:" << m_stageDataCache.size();
@@ -2200,6 +2248,8 @@ void ChromatographDataProcessDialog::updatePlot()
         m_chartView2->clearGraphs();
         m_chartView3->clearGraphs();
         m_chartView4->clearGraphs();
+        if (m_chartView5) m_chartView5->clearGraphs();
+        if (m_chartView6) m_chartView6->clearGraphs();
         return;
     }
 
@@ -2360,6 +2410,11 @@ void ChromatographDataProcessDialog::updatePlot()
     m_chartView4->setLegendVisible(false);
     m_chartView4->replot();
 
+    // --- 5. 更新【微调后对齐边界】图表 (m_chartView5) ---
+    updateFinetunedBoundsChart(sampleColorMap);
+
+    // --- 6. 更新【归一化分段面积】图表 (m_chartView6) ---
+    updateNormalizedAreaChart(sampleColorMap);
 
     // // --- 2. 更新【归一化】图表 (m_chartView3) ---
     // m_chartView3->clearGraphs();
@@ -2829,4 +2884,279 @@ void ChromatographDataProcessDialog::onStartComparison()
     //    我们将数据准备的工作完全交给 MainWindow 和 DifferenceWorkbench
     emit requestNewChromatographDifferenceWorkbench(referenceSampleId, m_stageDataCache, m_currentParams);
     DEBUG_LOG << "0000000";
+}
+
+// ==================== 色谱分段边界检测（参考 MATLAB finetuned_bounds_results.m）====================
+
+QVector<int> ChromatographDataProcessDialog::detectSegmentBoundaries(const QVector<double>& y, int smoothWindow)
+{
+    const int n = y.size();
+    if (n < smoothWindow * 3)
+        return {};
+
+    QVector<double> smoothed(n, 0.0);
+    int half = smoothWindow / 2;
+    for (int i = 0; i < n; ++i) {
+        int lo = qMax(0, i - half);
+        int hi = qMin(n - 1, i + half);
+        double sum = 0.0;
+        for (int j = lo; j <= hi; ++j)
+            sum += y[j];
+        smoothed[i] = sum / (hi - lo + 1);
+    }
+
+    const int minDist = qMax(20, n / 50);
+    double yMin = *std::min_element(smoothed.begin(), smoothed.end());
+    double yMax = *std::max_element(smoothed.begin(), smoothed.end());
+    double depthThresh = (yMax - yMin) * 0.05;
+
+    QVector<int> valleys;
+    for (int i = 1; i < n - 1; ++i) {
+        if (smoothed[i] < smoothed[i - 1] && smoothed[i] <= smoothed[i + 1]) {
+            double leftPeak = smoothed[i];
+            for (int j = i - 1; j >= qMax(0, i - minDist); --j)
+                if (smoothed[j] > leftPeak) leftPeak = smoothed[j];
+            double rightPeak = smoothed[i];
+            for (int j = i + 1; j <= qMin(n - 1, i + minDist); ++j)
+                if (smoothed[j] > rightPeak) rightPeak = smoothed[j];
+            double depth = qMin(leftPeak, rightPeak) - smoothed[i];
+            if (depth >= depthThresh) {
+                if (valleys.isEmpty() || (i - valleys.last()) >= minDist)
+                    valleys.append(i);
+            }
+        }
+    }
+
+    QVector<int> bounds;
+    bounds.append(0);
+    for (int v : valleys)
+        bounds.append(v);
+    bounds.append(n - 1);
+    return bounds;
+}
+
+QVector<int> ChromatographDataProcessDialog::finetuneBoundaries(const QVector<double>& y, const QVector<int>& rawBounds, int adjustRange)
+{
+    const int n = y.size();
+    QVector<int> finetuned;
+    finetuned.reserve(rawBounds.size());
+
+    for (int i = 0; i < rawBounds.size(); ++i) {
+        int idx = rawBounds[i];
+        int lo = qMax(0, idx - adjustRange);
+        int hi = qMin(n - 1, idx + adjustRange);
+
+        if (i > 0 && lo <= finetuned.last())
+            lo = finetuned.last() + 1;
+        if (i < rawBounds.size() - 1 && hi >= rawBounds[i + 1])
+            hi = rawBounds[i + 1] - 1;
+
+        if (lo > hi) {
+            finetuned.append(idx);
+            continue;
+        }
+
+        int bestIdx = lo;
+        double bestVal = y[lo];
+        for (int j = lo + 1; j <= hi; ++j) {
+            if (y[j] < bestVal) {
+                bestVal = y[j];
+                bestIdx = j;
+            }
+        }
+        finetuned.append(bestIdx);
+    }
+    return finetuned;
+}
+
+QVector<double> ChromatographDataProcessDialog::computeSegmentAreas(const QVector<double>& x, const QVector<double>& y, const QVector<int>& bounds)
+{
+    QVector<double> areas;
+    if (bounds.size() < 2)
+        return areas;
+
+    for (int s = 0; s < bounds.size() - 1; ++s) {
+        int iStart = bounds[s];
+        int iEnd   = bounds[s + 1];
+        double area = 0.0;
+        for (int j = iStart; j < iEnd; ++j)
+            area += (x[j + 1] - x[j]) * (y[j] + y[j + 1]) * 0.5;
+        areas.append(qAbs(area));
+    }
+    return areas;
+}
+
+QVector<double> ChromatographDataProcessDialog::normalizeAreas(const QVector<double>& areas)
+{
+    if (areas.isEmpty())
+        return {};
+
+    double maxArea = *std::max_element(areas.begin(), areas.end());
+    if (qFuzzyIsNull(maxArea))
+        maxArea = 1.0;
+
+    QVector<double> norm;
+    norm.reserve(areas.size());
+    for (double a : areas)
+        norm.append(a / maxArea);
+    return norm;
+}
+
+// ==================== 图表 5：微调后对齐边界 ====================
+
+void ChromatographDataProcessDialog::updateFinetunedBoundsChart(const QHash<int, QColor>& sampleColorMap)
+{
+    if (!m_chartView5) return;
+    m_chartView5->clearGraphs();
+    m_chartView5->setLabels(tr("保留时间"), tr("强度"));
+    m_chartView5->setPlotTitle(QStringLiteral("微调后对齐边界"));
+
+    QVector<double> firstX, firstY;
+
+    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+        const SampleGroup& group = groupIt.value();
+        for (const auto& sample : group.sampleDatas) {
+            const int sampleId = sample.sampleId;
+            if (!m_visibleSamples.contains(sampleId)) continue;
+
+            // 优先使用"色谱对齐"阶段数据，回退到"裁剪"
+            QSharedPointer<Curve> targetCurve;
+            for (const auto& stage : sample.stages) {
+                if (stage.stageName == StageName::PeakAlignment && stage.curve) {
+                    targetCurve = stage.curve;
+                    break;
+                }
+            }
+            if (targetCurve.isNull()) {
+                for (const auto& stage : sample.stages) {
+                    if (stage.stageName == StageName::Clip && stage.curve) {
+                        targetCurve = stage.curve;
+                        break;
+                    }
+                }
+            }
+            if (targetCurve.isNull()) continue;
+
+            const QVector<QPointF>& pts = targetCurve->data();
+            QVector<double> xData, yData;
+            xData.reserve(pts.size());
+            yData.reserve(pts.size());
+            for (const auto& p : pts) {
+                xData.append(p.x());
+                yData.append(p.y());
+            }
+
+            if (firstX.isEmpty()) {
+                firstX = xData;
+                firstY = yData;
+            }
+
+            SingleTobaccoSampleDAO dao;
+            SampleIdentifier sid = dao.getSampleIdentifierById(sampleId);
+            const QString legendName = QString("%1-%2-%3-%4")
+                                          .arg(sid.projectName)
+                                          .arg(sid.batchCode)
+                                          .arg(sid.shortCode)
+                                          .arg(sid.parallelNo)
+                                          + chromatographLegendExtraTags(sid);
+            const QColor color = sampleColorMap.value(sampleId, QColor(200, 30, 30));
+
+            m_chartView5->addGraph(xData, yData, legendName, color, sampleId);
+        }
+    }
+
+    // 在第一条曲线上检测边界并绘制垂直线
+    if (!firstX.isEmpty()) {
+        QVector<int> rawBounds = detectSegmentBoundaries(firstY);
+        QVector<int> bounds = finetuneBoundaries(firstY, rawBounds, 5);
+
+        QVector<double> boundXValues;
+        for (int idx : bounds) {
+            if (idx >= 0 && idx < firstX.size())
+                boundXValues.append(firstX[idx]);
+        }
+        m_chartView5->addVerticalLines(boundXValues, QColor(220, 60, 60, 180));
+        m_chartView5->setPlotTitle(QStringLiteral("微调后对齐边界（%1 个分段）").arg(qMax(0, bounds.size() - 1)));
+    }
+
+    m_chartView5->setLegendVisible(false);
+    m_chartView5->replot();
+}
+
+// ==================== 图表 6：归一化分段面积 ====================
+
+void ChromatographDataProcessDialog::updateNormalizedAreaChart(const QHash<int, QColor>& sampleColorMap)
+{
+    if (!m_chartView6) return;
+    m_chartView6->clearGraphs();
+    m_chartView6->setLabels(tr("分段编号"), tr("归一化面积"));
+    m_chartView6->setPlotTitle(QStringLiteral("归一化分段面积"));
+
+    bool firstSample = true;
+
+    for (auto groupIt = m_stageDataCache.constBegin(); groupIt != m_stageDataCache.constEnd(); ++groupIt) {
+        const SampleGroup& group = groupIt.value();
+        for (const auto& sample : group.sampleDatas) {
+            const int sampleId = sample.sampleId;
+            if (!m_visibleSamples.contains(sampleId)) continue;
+
+            QSharedPointer<Curve> targetCurve;
+            for (const auto& stage : sample.stages) {
+                if (stage.stageName == StageName::PeakAlignment && stage.curve) {
+                    targetCurve = stage.curve;
+                    break;
+                }
+            }
+            if (targetCurve.isNull()) {
+                for (const auto& stage : sample.stages) {
+                    if (stage.stageName == StageName::Clip && stage.curve) {
+                        targetCurve = stage.curve;
+                        break;
+                    }
+                }
+            }
+            if (targetCurve.isNull()) continue;
+
+            const QVector<QPointF>& pts = targetCurve->data();
+            QVector<double> xData, yData;
+            xData.reserve(pts.size());
+            yData.reserve(pts.size());
+            for (const auto& p : pts) {
+                xData.append(p.x());
+                yData.append(p.y());
+            }
+
+            QVector<int> rawBounds = detectSegmentBoundaries(yData);
+            QVector<int> bounds = finetuneBoundaries(yData, rawBounds, 5);
+            QVector<double> areas = computeSegmentAreas(xData, yData, bounds);
+            QVector<double> normAreas = normalizeAreas(areas);
+
+            if (normAreas.isEmpty()) continue;
+
+            QVector<double> segNumbers;
+            for (int i = 0; i < normAreas.size(); ++i)
+                segNumbers.append(i + 1);
+
+            SingleTobaccoSampleDAO dao;
+            SampleIdentifier sid = dao.getSampleIdentifierById(sampleId);
+            const QString legendName = QString("%1-%2-%3-%4")
+                                          .arg(sid.projectName)
+                                          .arg(sid.batchCode)
+                                          .arg(sid.shortCode)
+                                          .arg(sid.parallelNo)
+                                          + chromatographLegendExtraTags(sid);
+            const QColor color = sampleColorMap.value(sampleId, QColor(200, 30, 30));
+
+            if (firstSample) {
+                m_chartView6->addBars(segNumbers, normAreas, legendName, color);
+                m_chartView6->setPlotTitle(QStringLiteral("归一化分段面积（共 %1 段）").arg(normAreas.size()));
+                firstSample = false;
+            } else {
+                m_chartView6->addBars(segNumbers, normAreas, legendName, color);
+            }
+        }
+    }
+
+    m_chartView6->setLegendVisible(false);
+    m_chartView6->replot();
 }

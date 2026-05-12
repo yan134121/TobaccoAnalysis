@@ -39,6 +39,11 @@ public:
 
     // void addGraph(const QVector<double>& x, const QVector<double>& y, const QString& name, const QColor& color = Qt::blue, int sampleId);
     void addGraph(const QVector<double>& x, const QVector<double>& y, const QString& name, const QColor& color = Qt::blue, int sampleId =-1);
+
+    /** 添加柱状图（用于分段面积等可视化）*/
+    void addBars(const QVector<double>& x, const QVector<double>& y,
+                 const QString& name, const QColor& color = QColor(70, 130, 210),
+                 double width = 0.8);
     void highlightGraph(const QString& name);
     void clearGraphs();
     void setLabels(const QString& xLabel, const QString& yLabel);
@@ -231,6 +236,9 @@ private:
     QVector<QPointer<QWidget>> m_detachedWindows;
 
     QVector<QCPItemLine*> m_verticalLineItems;
+
+    QCPBarsGroup* m_barsGroup = nullptr;
+    QVector<QCPBars*> m_barsList;
 };
 
 #endif // CHARTVIEW_H
